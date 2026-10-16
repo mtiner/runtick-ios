@@ -5,8 +5,8 @@ struct ReactionResult: Codable {
     let reactionStatus: String
     var text: String { Self.text(reactionMs, reactionStatus) }
     static func text(_ ms: Double?, _ status: String?) -> String {
-        if status == "detected", let ms { return String(format: "起跑反应 %.0f ms", ms) }
-        if status == "false_start", let ms { return String(format: "抢跑 · %.0f ms（＜100 ms）", ms) }
+        if status == "detected", let ms { return String(format: "起跑反应 %.1f ms", ms) }
+        if status == "false_start", let ms { return String(format: "抢跑 · %.1f ms（＜100 ms）", ms) }
         return ["disabled": "未启用反应时检测", "timeout": "未检测到移动", "unavailable": "传感器不可用或未授权", "unstable": "放置不稳定", "cancelled": "检测已中断"][status ?? ""] ?? "未记录反应时"
     }
 }

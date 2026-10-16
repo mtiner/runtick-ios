@@ -113,6 +113,7 @@ struct RoomView: View {
                     ViewThatFits { resultNumber(race, size: 62); resultNumber(race, size: 42) }
                 }.frame(maxWidth: .infinity).padding(.vertical, 20).rtEntrance()
 
+                if race.reactionStatus == "false_start" { RTChip(text: "抢跑", lemon: true) }
                 Text(ReactionResult.text(race.reactionMs, race.reactionStatus) + " · 手机运动检测估算").font(.subheadline)
                 Text("服务端已保存 · 估算误差 ±\(race.uncertaintyMs ?? 0, specifier: "%.0f") ms（不含人工反应）").font(.footnote)
                 if let saved = race.savedResult {

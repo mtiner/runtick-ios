@@ -30,6 +30,7 @@ struct HistoryView: View {
                     ForEach(data.records) { record in HStack {
                         VStack(alignment: .leading) { Text("\(record.distance) 米"); Text(date(record.performedAt)).font(.caption).foregroundStyle(.secondary); Text(ReactionResult.text(record.reactionMs, record.reactionStatus)).font(.caption).foregroundStyle(RT.muted) }
                         Spacer(); Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).monospacedDigit()
+                        if record.reactionStatus == "false_start" { RTChip(text: "抢跑", lemon: true) }
                         if record.isPb { RTChip(text: "PB", lemon: true) }
                     }.padding(.vertical, 10) }
                 }

@@ -7,7 +7,9 @@ import SwiftUI
         WindowGroup {
             Group {
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--starter-preview") { TimingPreviewView(role: .start) }
+                if ProcessInfo.processInfo.arguments.contains("--solo-preview") { NavigationStack { SoloStartView(api: APIClient(baseURL: AppConfiguration.serverURL), user: User(id: 1, loginId: "RunTick")) } }
+                else if ProcessInfo.processInfo.arguments.contains("--about-preview") { NavigationStack { AboutView() } }
+                else if ProcessInfo.processInfo.arguments.contains("--starter-preview") { TimingPreviewView(role: .start) }
                 else if ProcessInfo.processInfo.arguments.contains("--finish-preview") || ProcessInfo.processInfo.arguments.contains("--settings-preview") { TimingPreviewView(role: .finish) }
                 else { LaunchContainer(model: model) }
                 #else

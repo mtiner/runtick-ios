@@ -7,6 +7,7 @@ import SwiftUI
     var result: ReactionResult?; var volumeWarning = false
     private let audio = StarterAudio(); private let motion = ReactionMotion()
     private var task: Task<Void, Never>?
+    private var previousIdleTimer = false
     init(api: APIClient, user: User) {
         self.api = api; self.user = user
         if let bytes = UserDefaults.standard.data(forKey: "starter"), let saved = try? JSONDecoder().decode([StageDelay].self, from: bytes), saved.count == 3, saved.allSatisfy(\.valid) { stages = saved }
@@ -15,6 +16,7 @@ import SwiftUI
         guard !running, stages.count == 3, stages.allSatisfy(\.valid) else { return }
         do { if !allowReducedVolume, try audio.needsVolumeConfirmation() { volumeWarning = true; return } }
         catch { self.error = error.localizedDescription; return }
+        previousIdleTimer = UIApplication.shared.isIdleTimerDisabled; UIApplication.shared.isIdleTimerDisabled = true
         running = true; result = nil; error = ""; cue = "请保持手机与起跑器稳定…"
         UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter")
         let id = UUID().uuidString, saved = stages
@@ -37,7 +39,7 @@ import SwiftUI
             } catch is CancellationError {} catch { self.error = error.localizedDescription; stop() }
         }
     }
-    func stop() { task?.cancel(); motion.end(); audio.stop(); running = false; deadline = nil; volumeWarning = false }
+    func stop() { if running { UIApplication.shared.isIdleTimerDisabled = previousIdleTimer }; task?.cancel(); motion.end(); audio.stop(); running = false; deadline = nil; volumeWarning = false }
 }
 struct SoloStartView: View {
     @State private var model: SoloStartModel
@@ -53,7 +55,7 @@ struct SoloStartView: View {
                     TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                         if let deadline = model.deadline { Text("\(max(0, Int(ceil((deadline - MonotonicClock.now()) / 1000))))").font(.system(size: 86, weight: .bold, design: .rounded)).monospacedDigit().frame(maxWidth: .infinity) }
                     }
-                    if let result = model.result { Text(result.text).font(.title2).frame(maxWidth: .infinity) }
+                    if let result = model.result { if result.reactionStatus == "false_start" { RTChip(text: "抢跑", lemon: true) }; Text(result.text).font(.title2).frame(maxWidth: .infinity) }
                     Button("结束本轮") { model.stop() }
                 }
             } else {
@@ -95,6 +97,7 @@ struct SoloHistoryView: View {
                 if records.isEmpty { Text("暂无记录") }
                 ForEach(records) { record in
                     VStack(alignment: .leading, spacing: 6) {
+                        if record.reactionStatus == "false_start" { RTChip(text: "抢跑", lemon: true) }
                         Text(ReactionResult.text(record.reactionMs, record.reactionStatus)).font(.headline)
                         Text(Date(timeIntervalSince1970: record.createdAt / 1000).formatted()).font(.caption).foregroundStyle(RT.muted)
                     }.padding(.vertical, 8)
