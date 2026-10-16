@@ -11,7 +11,7 @@ xcodegen generate
 open RunTick.xcodeproj
 ```
 
-必须打开 `RunTick.xcodeproj` 并选择 RunTick scheme 和 iPhone/iPad。直接打开仓库文件夹会进入 Swift 包 RunTickLogic，不能归档。签名 Team 在本机选择；Bundle ID 固定为 `cc.runtick.app`，与已上传的 TestFlight 包一致，不要改。无需第三方 Swift 包。客户端内置生产网关 `https://app.runtick.cc/`，无需填写服务器地址。账号与网页端共用，首次 ID 登录自动注册。
+必须打开 `RunTick.xcodeproj` 并选择 RunTick scheme 和 iPhone/iPad。直接打开仓库文件夹会进入 Swift 包 RunTickLogic，不能归档。签名 Team 固定为 `7D7486BA97`（HAO BO GAO）；Bundle ID 固定为 `cc.runtick.app`，与已上传的 TestFlight 包一致，不要改。无需第三方 Swift 包。客户端内置生产网关 `https://app.runtick.cc/`，无需填写服务器地址。账号与网页端共用，首次 ID 登录自动注册。
 
 `project.yml` 是工程配置源，修改后重新生成。仓库同时包含可直接打开的 `.xcodeproj`。调试后端必须提供可被手机访问且证书有效的 HTTPS 地址，应用不放开 ATS。
 
