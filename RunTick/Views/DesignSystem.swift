@@ -50,13 +50,28 @@ struct RTCard<Content: View>: View {
     }
 }
 struct RTBrand: View {
+    var showHelp = true
+    var onExit: (() -> Void)? = nil
+    var exiting = false
+    @State private var help = false
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
+            HStack(spacing: 9) {
             RTWordmark().fill(RT.ink, style: FillStyle(eoFill: true)).frame(width: 100, height: 22)
             Text("/").foregroundStyle(RT.muted.opacity(0.55))
             RTWordmark(chinese: true).fill(RT.ink, style: FillStyle(eoFill: true)).frame(width: 52, height: 22)
-            Spacer()
-        }.padding(.bottom, 4).accessibilityElement(children: .ignore).accessibilityLabel("RunTick 燃刻")
+            }.accessibilityElement(children: .ignore).accessibilityLabel("RunTick 燃刻")
+            Spacer(minLength: 4)
+            if let onExit {
+                Button(action: onExit) { Image(systemName: "rectangle.portrait.and.arrow.right").frame(width: 34, height: 34) }
+                    .buttonStyle(.glass).buttonBorderShape(.circle).disabled(exiting).accessibilityLabel("退出房间")
+            }
+            if showHelp {
+                Button { help = true } label: { Image(systemName: "questionmark").frame(width: 34, height: 34) }
+                    .buttonStyle(.glass).buttonBorderShape(.circle).accessibilityLabel("使用说明")
+            }
+        }.padding(.bottom, 4)
+            .sheet(isPresented: $help) { NavigationStack { HelpView() } }
     }
 }
 struct RTBrandFooter: View {

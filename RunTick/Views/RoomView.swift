@@ -11,7 +11,7 @@ struct RoomView: View {
     var finishVisible: Bool { model.raceRole == .finish && model.race?.active == true && model.race?.finishAt == nil && model.clock != nil && model.pending == nil }
     var body: some View {
         RTPage {
-            RTBrand().rtEntrance()
+            RTBrand(onExit: leave, exiting: model.busy).rtEntrance()
             RTHero(badge: "房间 \(model.code)", title: model.race?.status == "completed" ? "本次成绩" : model.race?.active == true ? (model.raceRole == .start ? "起跑发令" : "终点记录") : "房间准备", subtitle: "准备好，就出发。").rtEntrance(0.04)
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "wifi" : "wifi.slash")
@@ -48,7 +48,7 @@ struct RoomView: View {
             }
             if let pending = model.pending { RTCard("待提交时间戳") { Text("轮次 \(pending.raceId) · \(pending.event.kind.title)\n原始时间戳已保留，联网后自动重试"); Button("重试提交") { Task { await model.submit() } }.disabled(model.submitting) } }
             NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code) }
-            Button("返回房间入口", action: leave)
+            Button("退出房间", systemImage: "rectangle.portrait.and.arrow.right", action: leave)
         }
         .rtErrorAlert($model.error, enabled: !finishVisible && !soundCheck)
         .navigationBarBackButtonHidden()

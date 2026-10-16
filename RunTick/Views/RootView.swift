@@ -17,7 +17,7 @@ struct RootView: View {
             } else {
                 // Native tab bars adopt Liquid Glass on iOS 26+. Keep their system
                 // background and safe-area behavior, including Reduce Transparency.
-                TabView(selection: tabSelection) {
+                TabView(selection: $destination) {
                     Tab("房间详情", systemImage: "house", value: Destination.room) {
                         NavigationStack {
                             Group {
@@ -41,23 +41,19 @@ struct RootView: View {
         }
         .overlay { if model.loading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
         .rtErrorAlert($model.error, enabled: model.room == nil)
-        .onChange(of: model.user?.id) { _, _ in destination = .room; profilePath = NavigationPath() }
-    }
-    private var tabSelection: Binding<Destination> {
-        Binding(get: { destination }, set: { target in
-            guard !model.loading else { return }
-            if target == .room {
-                Task {
-                    await model.perform {
-                        try await model.openCurrentRoom()
-                        destination = .room
-                    }
-                }
-            } else {
-                model.room?.interrupt()
-                destination = .profile
+        .onChange(of: destination) { _, target in
+            if target == .profile { model.room?.interrupt() }
+        }
+        .task(id: destination) {
+            guard destination == .room, model.user != nil, !model.loading else { return }
+            do { try await model.openCurrentRoom() }
+            catch is CancellationError {}
+            catch {
+                if let room = model.room { room.error = error.localizedDescription }
+                else { model.error = error.localizedDescription }
             }
-        })
+        }
+        .onChange(of: model.user?.id) { _, _ in destination = .room; profilePath = NavigationPath() }
     }
     private func profileView(_ user: User) -> some View {
         RTPage {
@@ -128,12 +124,14 @@ struct RootView: View {
 }
 
 struct GuideView: View {
+    var continueTitle = "开始使用"
+    var showHelp = true
     let proceed: () -> Void
     @State private var capabilities = "点击检查设备能力"
     private let motion = CMMotionManager()
     var body: some View {
         RTPage {
-            RTBrand().rtEntrance()
+            RTBrand(showHelp: showHelp).rtEntrance()
             RTHero(badge: "开始之前", title: "两端协同，\n记录每次突破", subtitle: "起点发令，终点松手。\n让每一份努力，都有准确的刻度。").rtEntrance(0.04)
             RTCard {
                 HStack(spacing: 20) {
@@ -149,7 +147,7 @@ struct GuideView: View {
 
             }.rtEntrance(0.12)
             AudioPreparationCard().rtEntrance(0.14)
-            Button("开始使用", action: proceed).buttonStyle(RTButtonStyle()).accessibilityIdentifier("guide.continue").rtEntrance(0.16)
+            Button(continueTitle, action: proceed).buttonStyle(RTButtonStyle()).accessibilityIdentifier("guide.continue").rtEntrance(0.16)
             Text("请使用手机扬声器。计时估算误差不含人工反应。").font(.caption).foregroundStyle(RT.muted).frame(maxWidth: .infinity)
             RTBrandFooter()
         }

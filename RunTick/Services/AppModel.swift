@@ -50,6 +50,7 @@ import SwiftUI
     func openCurrentRoom() async throws {
         guard let api, let user else { return }
         let result: CurrentRoomResponse = try await api.request("/api/rooms/current")
+        try Task.checkCancellation()
         if let current = result.room {
             guard room?.code != current.code else { room?.resume(); return }
             room?.stop()
