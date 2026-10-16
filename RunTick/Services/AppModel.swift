@@ -10,6 +10,7 @@ import SwiftUI
     let serverAddress = AppConfiguration.serverURL.absoluteString
     func configure() throws {
         api = APIClient(baseURL: AppConfiguration.serverURL)
+        user = api?.savedUser
         api?.unauthorized = { [weak self] in self?.clearSession() }
     }
     func clearSession() { room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
@@ -19,7 +20,7 @@ import SwiftUI
             try self.configure()
             do {
                 let result: UserResponse = try await self.api!.request("/api/auth/me")
-                self.user = result.user; try await self.leave()
+                self.user = result.user; try self.api!.remember(result.user); try await self.leave()
             } catch let error as ClientError where error.status == 401 {
                 // No saved session on a fresh install is expected, not a connection failure.
                 return
@@ -35,7 +36,7 @@ import SwiftUI
         guard !id.trimmingCharacters(in: .whitespaces).isEmpty, !password.isEmpty else { throw ClientError.message("请输入用户 ID 和密码") }
         try configure()
         let result: UserResponse = try await api!.request("/api/auth/login", method: "POST", body: ["userId": id, "password": password])
-        user = result.user; try await leave()
+        user = result.user; try api!.remember(result.user); try await leave()
     }
     func enter(code: String? = nil) async throws {
         guard let api, let user else { return }

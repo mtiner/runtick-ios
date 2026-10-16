@@ -1,7 +1,39 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testSavedSessionSurvivesEncodingWithoutExtendingExpiry() throws {
+        let server = URL(string: "https://app.runtick.cc/")!
+        let expiry = Date(timeIntervalSince1970: 2_000_000_000)
+        let cookie = HTTPCookie(properties: [.name: "runtick_session", .value: "test-token", .domain: "app.runtick.cc", .path: "/", .secure: "TRUE", .expires: expiry])!
+        let data = try JSONEncoder().encode(SavedSessionCookie(cookie))
+        let restored = try JSONDecoder().decode(SavedSessionCookie.self, from: data)
+        let validTime = expiry.addingTimeInterval(-60)
+        XCTAssertEqual(restored.cookie(for: server, now: validTime)?.value, "test-token")
+        XCTAssertEqual(restored.cookie(for: server, now: validTime)?.expiresDate, expiry)
+        XCTAssertNil(restored.cookie(for: server, now: expiry))
+        XCTAssertNil(restored.cookie(for: URL(string: "https://other.example/")!, now: validTime))
+        XCTAssertNil(restored.cookie(for: URL(string: "http://app.runtick.cc/")!, now: validTime))
+    }
+    #if os(iOS)
+    func testKeychainSessionSurvivesStoreRecreationAndLogoutClearsIt() throws {
+        let server = URL(string: "https://session-test-\(UUID().uuidString).example/")!
+        let store = SessionStore(server: server)
+        defer { store.clear() }
+        let cookie = HTTPCookie(properties: [.name: "runtick_session", .value: "test-token", .domain: server.host!, .path: "/", .secure: "TRUE", .expires: Date().addingTimeInterval(3600)])!
+        try store.save(cookie, user: User(id: 1, loginId: "test"))
+        let recreated = SessionStore(server: server)
+        XCTAssertEqual(recreated.restore()?.value, "test-token")
+        XCTAssertEqual(recreated.read()?.user?.loginId, "test")
+        recreated.clear()
+        XCTAssertNil(SessionStore(server: server).restore())
+        XCTAssertNil(SessionStore(server: server).read()?.user)
+    }
+    #endif
+
     func testRoleChangesImmediatelyAndBlocksAnotherRequest() {
         var state = RoleSelection()
         XCTAssertTrue(state.begin(.finish, serverRole: .start))
