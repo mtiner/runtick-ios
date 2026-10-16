@@ -4,10 +4,11 @@ import SwiftUI
 struct LaunchContainer: View {
     @Bindable var model: AppModel
     @State private var launching = true
+    @AppStorage("onboarded") private var onboarded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
-            RootView(model: model).allowsHitTesting(!launching).accessibilityHidden(launching)
+            RootView(model: model, guideIsVisible: !launching).allowsHitTesting(!launching).accessibilityHidden(launching)
             if launching { BrandLaunchView().transition(.opacity).zIndex(1) }
         }
         .task {
@@ -15,10 +16,12 @@ struct LaunchContainer: View {
             // Deterministic simulator capture, with no network or account data.
             if ProcessInfo.processInfo.arguments.contains("--brand-preview") { return }
             #endif
-            async let restoration: Void = model.restore()
             do { try await Task.sleep(for: .milliseconds(1300)) } catch { return }
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) { launching = false }
-            await restoration
+        }
+        .task(id: onboarded) {
+            // First-launch networking belongs to the visible preparation page.
+            if onboarded { await model.restore() }
         }
     }
 }

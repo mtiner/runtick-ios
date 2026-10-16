@@ -3,6 +3,7 @@ import CoreMotion
 
 struct RootView: View {
     @Bindable var model: AppModel
+    var guideIsVisible = true
     @AppStorage("onboarded") private var onboarded = false
     @State private var login = ""
     @State private var password = ""
@@ -13,7 +14,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if !onboarded {
-                NavigationStack { GuideView { onboarded = true }.toolbar(.hidden, for: .navigationBar) }
+                NavigationStack { GuideView(automaticallyCheckNetwork: guideIsVisible) { onboarded = true }.toolbar(.hidden, for: .navigationBar) }
             } else {
                 // Native tab bars adopt Liquid Glass on iOS 26+. Keep their system
                 // background and safe-area behavior, including Reduce Transparency.
@@ -124,6 +125,7 @@ struct RootView: View {
 }
 
 struct GuideView: View {
+    var automaticallyCheckNetwork = true
     var continueTitle = "开始使用"
     var showHelp = true
     let proceed: () -> Void
@@ -141,6 +143,7 @@ struct GuideView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 12)
                 Text("起点运动员播放原声发令；终点记录员提前按住屏幕，冲线时松手。").font(.subheadline).foregroundStyle(RT.muted).lineSpacing(5)
             }.rtEntrance(0.08)
+            NetworkPreparationCard(automaticallyCheck: automaticallyCheckNetwork).rtEntrance(0.1)
             RTCard("设备准备") {
                 Text(capabilities).font(.footnote).foregroundStyle(RT.muted)
                 Button("检查设备能力") { capabilities = "陀螺仪：\(motion.isGyroAvailable ? "可用" : "不支持") · 加速度计：\(motion.isAccelerometerAvailable ? "可用" : "不支持")\n系统会话存储 · 房间内自动常亮" }
