@@ -144,6 +144,8 @@ struct RTPBCelebration: View {
     let improvement: Double?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var revealed = false
+    @State private var playedSound = false
+    @State private var pbAudio = PBAudio()
     var body: some View {
         ZStack {
             ForEach(0..<12) { index in
@@ -157,7 +159,11 @@ struct RTPBCelebration: View {
                 .scaleEffect(revealed ? 1 : 0.7)
         }.frame(maxWidth: .infinity).frame(height: 160)
             .overlay(alignment: .bottom) { Text("新的个人最佳！").font(.headline) }
-            .onAppear { withAnimation(reduceMotion ? nil : .spring(response: 0.65, dampingFraction: 0.55)) { revealed = true } }
+            .onAppear {
+                if !playedSound { playedSound = true; pbAudio.play() }
+                withAnimation(reduceMotion ? nil : .spring(response: 0.65, dampingFraction: 0.55)) { revealed = true }
+            }
+            .onDisappear { pbAudio.stop() }
             .accessibilityLabel("新的个人最佳")
     }
 }
