@@ -59,6 +59,9 @@ jobs:
           xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" --settings-preview
           sleep 2
           xcrun simctl io "$ID" screenshot screenshots/settings.png
+          xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" --starter-preview --volume-warning-preview
+          sleep 2
+          xcrun simctl io "$ID" screenshot screenshots/volume-warning.png
       - uses: actions/upload-artifact@v4
         with:
           name: ios-screenshots
