@@ -187,6 +187,7 @@ import SwiftUI
         catch is CancellationError {} catch { self.error = error.localizedDescription; audio.stop() }
     }
     func press() {
+        if clock?.fresh == false { error = "校时已过期，请先重新校时，再按住屏幕。"; return }
         guard let clock, clock.fresh, !syncing, pending == nil, race?.active == true, race?.finishAt == nil, raceRole == .finish else { return }
         eventClock = clock; pressed = true
     }

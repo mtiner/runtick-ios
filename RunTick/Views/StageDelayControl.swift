@@ -4,12 +4,15 @@ struct StageDelayControl: View {
     let title: String
     @Binding var stage: StageDelay
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.subheadline.bold())
-            Toggle("随机等待", isOn: $stage.random)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title).font(.subheadline.bold())
+                Spacer(minLength: 8)
+                Toggle("随机", isOn: $stage.random).font(.caption).fixedSize()
                 .onChange(of: stage.random) { _, random in
                     if random && stage.max == stage.min && stage.min < 30 { stage.max = min(30, stage.min + 5) }
                 }
+            }
             HStack {
                 Text(stage.random ? "随机范围" : "固定等待").foregroundStyle(RT.muted)
                 Spacer()

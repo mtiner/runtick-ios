@@ -38,20 +38,21 @@ jobs:
           xcrun simctl bootstatus "$ID" -b
           xcrun simctl status_bar "$ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
           xcrun simctl install "$ID" DerivedData/Build/Products/Debug-iphonesimulator/RunTick.app
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" DerivedData/Build/Products/Debug-iphonesimulator/RunTick.app/Info.plist)
           mkdir -p screenshots
-          xcrun simctl launch --terminate-running-process "$ID" cc.runtick.app --brand-preview
+          xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" --brand-preview
           sleep 2
           xcrun simctl io "$ID" screenshot screenshots/launch.png
-          xcrun simctl launch --terminate-running-process "$ID" cc.runtick.app -onboarded NO
+          xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" -onboarded NO
           sleep 3
           xcrun simctl io "$ID" screenshot screenshots/guide.png
-          xcrun simctl launch --terminate-running-process "$ID" cc.runtick.app -onboarded YES
+          xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" -onboarded YES
           sleep 3
           xcrun simctl io "$ID" screenshot screenshots/login.png
-          xcrun simctl launch --terminate-running-process "$ID" com.mtiner.runtick --starter-preview
+          xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" --starter-preview
           sleep 2
           xcrun simctl io "$ID" screenshot screenshots/starter.png
-          xcrun simctl launch --terminate-running-process "$ID" com.mtiner.runtick --finish-preview
+          xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" --finish-preview
           sleep 2
           xcrun simctl io "$ID" screenshot screenshots/finish.png
       - uses: actions/upload-artifact@v4
