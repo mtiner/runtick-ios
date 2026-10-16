@@ -62,7 +62,8 @@ import SwiftUI
     func replayPending() async throws {
         guard let api, let user else { return }
         let prefix = "pending:\(api.baseURL.absoluteString):\(user.id):"
-        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix(prefix) {
+        let legacyPrefix = "pending:\(api.baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))):\(user.id):"
+        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix(prefix) || key.hasPrefix(legacyPrefix) {
             guard let bytes = value as? Data, let pending = try? JSONDecoder().decode(PendingEvent.self, from: bytes), pending.userId == user.id else { continue }
             let event = pending.event
             let _: RaceResponse = try await api.request("/api/rooms/\(pending.code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
