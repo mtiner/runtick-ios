@@ -26,7 +26,7 @@
 
 ## 尚需在 Apple 环境验收
 
-- 使用 iOS 27 SDK 完整构建、XCTest、无障碍/Dynamic Type 与 iPhone/iPad 布局。
+- 使用 iOS 26 SDK 完整构建、XCTest、无障碍/Dynamic Type 与 iPhone/iPad 布局。
 - 两台真机及一台网页混合加入：角色互换、在线离线、房间满员、退出与重连。
 - 起点试听后发令，终点提前按住，松开得到相同成绩；后台/系统打断不能误记。
 - 固定/随机等待、零等待、最大等待、音频路由变化与扬声器枪声时间实测。
@@ -35,7 +35,7 @@
 - 历史运动员权限、距离、四种排序、50 条分页、趋势跨页不变与空记录。
 - 401 清理、服务不可达、Cookie 恢复、切换服务地址账号隔离。
 
-CI 明确要求 iOS 27 SDK；没有在当前 Linux 环境声称 Apple 构建/真机验收已经通过。
+CI 明确要求 iOS 26 SDK；没有在当前 Linux 环境声称 Apple 构建/真机验收已经通过。
 
 ## 本次已执行验证
 
@@ -43,3 +43,9 @@ CI 明确要求 iOS 27 SDK；没有在当前 Linux 环境声称 Apple 构建/真
 - `swift test`：5 个 XCTest 用例全部通过（偏移/误差公式、不可用网络样本、等待设置、原始时间戳持久化、乱序响应保护）。
 - 使用真实 FoundationNetworking/Observation 对 APIClient、AppModel/RoomModel 做 Linux 类型检查通过；仅将 Apple 专用音频服务替换为签名相同的验证桩，此项不覆盖 AVFoundation/SwiftUI 类型检查。
 - 三个 WAV 与源仓库逐字节一致；工程源文件、音频引用、scheme XML 与 YAML 配置做静态检查。
+
+## 最低系统版本调整
+
+最低部署版本由 iOS 27.0 调整为 iOS 26.0，应用与测试 target、生成脚本和 CI 同步更新。现有代码使用 SwiftUI/Observation、Swift Charts、URLSession WebSocket、AVAudioEngine 和 UIKit 触控，没有采用 iOS 27 专属 API，因此无需删减业务功能。iOS 26 及以上均可安装；iOS 27 的实际表现仍需对应系统验收。
+
+计时精度取决于设备、音频路由、网络波动和人工反应；不能仅凭系统版本宣称 iOS 27 更准确。CI 允许 iOS 26 或更新 SDK，但测试明确选择 iOS 26 runtime。

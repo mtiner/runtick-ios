@@ -1,10 +1,10 @@
 # RunTick iOS · 燃刻
 
-原生 SwiftUI 双端跑步计时客户端，最低部署目标 **iOS 27.0**。兼容已有 RunTick Cloudflare Worker API，可与网页端加入同一房间。没有使用 WebView。
+原生 SwiftUI 双端跑步计时客户端，最低部署目标 **iOS 26.0**。兼容已有 RunTick Cloudflare Worker API，可与网页端加入同一房间。没有使用 WebView。
 
 ## 在 Xcode 中运行
 
-需要带 iOS 27 SDK 的 Xcode 和 XcodeGen（`brew install xcodegen`）。
+需要带 iOS 26 SDK 的 Xcode 和 XcodeGen（`brew install xcodegen`）。
 
 ```sh
 xcodegen generate
@@ -33,11 +33,11 @@ open RunTick.xcodeproj
 
 ```sh
 xcodebuild -project RunTick.xcodeproj -scheme RunTick \
-  -destination 'platform=iOS Simulator,name=你的 iOS 27 模拟器' \
+  -destination 'platform=iOS Simulator,name=你的 iOS 26 模拟器' \
   CODE_SIGNING_ALLOWED=NO test
 ```
 
-GitHub Actions 会检查 SDK 版本，再编译并运行 XCTest。若 GitHub 托管机器尚无 iOS 27 SDK，任务会明确失败；需改用安装相应 Xcode 的 runner。不能通过降低部署目标将其算作 iOS 27 验证。
+GitHub Actions 会检查 SDK 版本，再编译并运行 XCTest。若 GitHub 托管机器尚无 iOS 26 SDK，任务会明确失败；需改用安装相应 Xcode 的 runner。最低部署版本与构建 SDK 分开管理：可用更高版本 SDK 构建，但兼容性测试仍需 iOS 26 模拟器。
 
 本次迁移在 Linux 编写，无法执行 Apple SDK 类型检查、模拟器和签名打包。Linux 的 Swift 校验不代替 iOS 构建，尚需按 MIGRATION 中的双机清单验收。
 

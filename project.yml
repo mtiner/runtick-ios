@@ -2,11 +2,11 @@ name: RunTick
 options:
   bundleIdPrefix: com.mtiner
   deploymentTarget:
-    iOS: '27.0'
+    iOS: '26.0'
 settings:
   base:
     SWIFT_VERSION: '5.0'
-    IPHONEOS_DEPLOYMENT_TARGET: '27.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '26.0'
     TARGETED_DEVICE_FAMILY: '1,2'
     CODE_SIGN_STYLE: Automatic
     GENERATE_INFOPLIST_FILE: YES
