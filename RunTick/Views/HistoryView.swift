@@ -13,8 +13,10 @@ struct HistoryView: View {
     @State private var selected: String?
     var filter: String { "\(athleteId):\(distance):\(sort):\(offset)" }
     var body: some View {
-        List {
-            Section("筛选") {
+        RTPage {
+            RTBrand().rtEntrance()
+            RTHero(badge: "训练档案", title: "历史成绩", subtitle: "每一次出发，都在向更好的自己靠近。").rtEntrance(0.04)
+            RTCard("筛选") {
                 if let data, data.athletes.count > 1 {
                     Picker("运动员", selection: $athleteId) { ForEach(data.athletes) { athlete in Text(athlete.id == user.id ? "我" : athlete.loginId).tag(athlete.id) } }
                 }
@@ -22,31 +24,31 @@ struct HistoryView: View {
                 Picker("排序", selection: $sort) { Text("最新").tag("date-desc"); Text("最早").tag("date-asc"); Text("最快").tag("result-asc"); Text("最慢").tag("result-desc") }
             }
             if distance > 0, let points = data?.trend, !points.isEmpty {
-                Section("\(distance) 米 · 最近 \(points.count) 次 · 越低越快") {
+                RTCard("\(distance) 米 · 最近 \(points.count) 次 · 越低越快") {
                     Chart(Array(points.enumerated()), id: \.element.id) { index, point in
                         LineMark(x: .value("次序", index + 1), y: .value("秒", point.elapsedMs / 1000)).interpolationMethod(.monotone)
                         PointMark(x: .value("次序", index + 1), y: .value("秒", point.elapsedMs / 1000))
-                    }.frame(height: 200).chartYScale(domain: trendDomain(points))
+                    }.foregroundStyle(RT.deep).frame(height: 200).chartYScale(domain: trendDomain(points))
                     ForEach(points) { point in
                         Button { selected = point.id } label: { HStack { Text(date(point.performedAt)); Spacer(); Text(String(format: "%.3f 秒", point.elapsedMs / 1000)); if selected == point.id { Image(systemName: "checkmark") } }.font(.caption) }
                     }
                 }
             }
             if loading { ProgressView("加载成绩中…") }
-            if !error.isEmpty { Section { Text(error).foregroundStyle(.red); Button("重试") { Task { await load() } } } }
+            if !error.isEmpty { RTCard { Text(error).foregroundStyle(.red); Button("重试") { Task { await load() } } } }
             if let data {
-                Section("历史成绩") {
+                RTCard("历史成绩") {
                     if data.records.isEmpty { Text("暂无成绩，完成计时后由终点填写距离并保存。") }
                     ForEach(data.records) { record in HStack {
                         VStack(alignment: .leading) { Text("\(record.distance) 米"); Text(date(record.performedAt)).font(.caption).foregroundStyle(.secondary) }
                         Spacer(); Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).monospacedDigit()
-                        if record.isPb { Text("PB").font(.caption.bold()).foregroundStyle(.orange) }
-                    } }
+                        if record.isPb { RTChip(text: "PB", lemon: true) }
+                    }.padding(.vertical, 10) }
                 }
                 HStack { Button("上一页") { offset = max(0, offset - 50) }.disabled(offset == 0 || loading); Spacer(); Button("下一页") { offset += 50 }.disabled(!data.hasMore || loading) }
             }
         }
-        .navigationTitle("历史成绩")
+        .navigationTitle("历史成绩").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .task(id: filter) { await load() }
         .onChange(of: athleteId) { _, _ in distance = 0; offset = 0 }
         .onChange(of: distance) { _, _ in offset = 0 }
