@@ -28,7 +28,7 @@ import SwiftUI
                         Task {
                             do {
                                 let settings = try JSONSerialization.jsonObject(with: JSONEncoder().encode(saved))
-                                try await TrainingSync.send(api: self.api, userId: self.user.id, path: "/api/starts", body: ["id": id, "firedAt": firedAt, "settings": settings, "reactionMs": value.reactionMs as Any? ?? NSNull(), "reactionStatus": value.reactionStatus], id: id)
+                                try await TrainingSync.send(api: self.api, userId: self.user.id, path: "/api/starts", body: ["id": id, "firedAt": firedAt, "athleteId": self.user.id, "settings": settings, "reactionMs": value.reactionMs as Any? ?? NSNull(), "reactionStatus": value.reactionStatus], id: id)
                             } catch { self.error = "记录已保留在本机，联网后可重试：" + error.localizedDescription }
                         }
                     }

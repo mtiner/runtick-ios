@@ -15,7 +15,7 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     ASSETCATALOG_COMPILER_APPICON_NAME: runtick
     INFOPLIST_KEY_CFBundleDisplayName: RunTick 燃刻
-    INFOPLIST_KEY_NSMotionUsageDescription: 检查运动传感器是否可用，计时使用枪声和触屏。
+    INFOPLIST_KEY_NSMotionUsageDescription: 开启起跑反应检测后，使用加速度计和陀螺仪检测起跑器上的手机移动；运动采样仅在本机处理。
     INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.sports
     INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
     INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
