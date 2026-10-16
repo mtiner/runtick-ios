@@ -97,7 +97,7 @@ struct FinishPad: View {
                 Text(model.error).foregroundStyle(.red).padding()
             }.allowsHitTesting(false)
             TouchCapture(onDown: { model.press() }, onUp: { model.release(at: $0) }, onCancel: { model.cancelPress() }).padding(.top, 100)
-            VStack { HStack { Spacer(); Button("返回房间", action: { model.cancelPress(); leave() }).buttonStyle(.borderedProminent) }; Spacer(); if model.clock?.fresh != true { Button("重新校时") { Task { await model.calibrate() } }.buttonStyle(.borderedProminent) } }.padding()
+            VStack { HStack { Spacer(); Button("返回房间", action: { model.cancelPress(); leave() }).buttonStyle(.glass) }; Spacer(); if model.clock?.fresh != true { Button("重新校时") { Task { await model.calibrate() } }.buttonStyle(.glass) } }.padding()
         }.foregroundStyle(Color(red: 0.07, green: 0.24, blue: 0.23))
             .onChange(of: phase) { _, phase in if phase != .active { model.cancelPress() } }
             .onDisappear { model.cancelPress() }

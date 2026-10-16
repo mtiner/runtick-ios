@@ -2,6 +2,14 @@ import XCTest
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testCurrentRoomNavigationResponse() throws {
+        let decoder = JSONDecoder()
+        let empty = try decoder.decode(CurrentRoomResponse.self, from: Data(#"{"room":null}"#.utf8))
+        XCTAssertNil(empty.room)
+        let active = try decoder.decode(CurrentRoomResponse.self, from: Data(#"{"room":{"code":"0123"}}"#.utf8))
+        XCTAssertEqual(active.room?.code, "0123")
+        XCTAssertNil(active.room?.status)
+    }
     func testClockOffsetAndUncertainty() throws {
         let mapping = try ClockMapping.average([ClockSample(sent: 1000, received: 1020, serverReceived: 1015, serverSent: 1015), ClockSample(sent: 2000, received: 2024, serverReceived: 2017, serverSent: 2017)])
         XCTAssertEqual(mapping.offset, 5, accuracy: 0.001)

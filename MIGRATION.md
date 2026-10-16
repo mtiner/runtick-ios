@@ -49,3 +49,15 @@ CI 明确要求 iOS 26 SDK；没有在当前 Linux 环境声称 Apple 构建/真
 最低部署版本由 iOS 27.0 调整为 iOS 26.0，应用与测试 target、生成脚本和 CI 同步更新。现有代码使用 SwiftUI/Observation、Swift Charts、URLSession WebSocket、AVAudioEngine 和 UIKit 触控，没有采用 iOS 27 专属 API，因此无需删减业务功能。iOS 26 及以上均可安装；iOS 27 的实际表现仍需对应系统验收。
 
 计时精度取决于设备、音频路由、网络波动和人工反应；不能仅凭系统版本宣称 iOS 27 更准确。CI 允许 iOS 26 或更新 SDK，但测试明确选择 iOS 26 runtime。
+
+## H5 底部导航同步与 Liquid Glass
+
+参考 `mtiner/runtick-app` commit `74ed2ee105033b0726214d1ddbb3d62b1e2be5bd` 的 BottomNav、ProfileView 和 currentRoom API。
+
+- iOS 使用原生 `TabView` / `Tab`，对应“房间详情”“我的”。使用 iOS 26+ SDK 构建后由系统绘制 Liquid Glass 标签栏，不覆盖其背景或复制 H5 固定高度。
+- “我的”显示头像首字母、账号、登录状态、历史成绩及退出登录；历史页保留在该标签的独立 NavigationStack。
+- 点击房间标签先查询 `GET /api/rooms/current`；有房间则恢复，无房间则进入入口。查询失败保留当前标签和错误提示。切换到“我的”取消本机发令和按压，但保留房间连接。
+- 终点触控继续使用全屏 presentation 遮住底部标签栏；返回和重新校时按钮使用系统 `.glass` 按钮样式。
+- 保留系统无障碍与减少透明度行为；不对主触控平面叠加玻璃，避免影响对比度。
+
+新增 currentRoom 空房间/现有房间响应解码测试。仍需 Xcode 26+ 构建与真机检查玻璃外观、深浅色、减少透明度、标签切换和全屏触控恢复。

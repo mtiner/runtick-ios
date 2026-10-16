@@ -19,6 +19,7 @@ open RunTick.xcodeproj
 
 - 设备引导、传感器可用性检查、原声试听；房间内前台屏幕常亮。
 - 登录、会话恢复、退出、全局 401 清理；系统 Cookie 同时用于 REST 与 WebSocket。
+- 与 runtick-app H5 对齐的“房间详情 / 我的”原生底部标签栏，iOS 26+ 系统 Liquid Glass；个人资料和历史成绩入口。
 - 创建/加入 4 位房间，双人在线状态、起点/终点角色互换，自动重连和 30 秒心跳。
 - 20 次 HTTP 校时，平均偏移与 RTT、误差估计；超过 250 ms 拒绝，超过两分钟重新校时。
 - 三阶段固定/随机等待（0–30 秒）、原始 WAV 硬件时钟发令、枪声时间戳。
@@ -41,4 +42,4 @@ GitHub Actions 会检查 SDK 版本，再编译并运行 XCTest。若 GitHub 托
 
 本次迁移在 Linux 编写，无法执行 Apple SDK 类型检查、模拟器和签名打包。Linux 的 Swift 校验不代替 iOS 构建，尚需按 MIGRATION 中的双机清单验收。
 
-平台无关核心逻辑也可用 Swift 6 执行 `swift test`；当前 5 个用例已通过。它只编译 Core 与测试，不构建 iOS 界面或音频服务。
+平台无关核心逻辑也可用 Swift 6 执行 `swift test`；当前 6 个用例已通过。它只编译 Core 与测试，不构建 iOS 界面或音频服务。

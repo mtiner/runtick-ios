@@ -21,7 +21,7 @@ import AVFoundation
         for file in files {
             let node = AVAudioPlayerNode(); engine.attach(node)
             engine.connect(node, to: engine.mainMixerNode, format: file.processingFormat)
-            node.scheduleFile(file, at: nil); nodes.append(node)
+            node.scheduleFile(file, at: nil, completionHandler: nil); nodes.append(node)
         }
         try engine.start()
         let delays = settings.map { $0.sample() }

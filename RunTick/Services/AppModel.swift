@@ -39,6 +39,19 @@ import SwiftUI
         let model = RoomModel(code: response.room.code, user: user, api: api)
         room = model; lobbyReady = false; model.start()
     }
+    /// Match the H5 room tab: resolve membership without leaving a live room.
+    func openCurrentRoom() async throws {
+        guard let api, let user else { return }
+        let result: CurrentRoomResponse = try await api.request("/api/rooms/current")
+        if let current = result.room {
+            guard room?.code != current.code else { room?.resume(); return }
+            room?.stop()
+            let model = RoomModel(code: current.code, user: user, api: api)
+            room = model; lobbyReady = false; model.start()
+        } else {
+            try await leave()
+        }
+    }
     func replayPending() async throws {
         guard let api, let user else { return }
         let prefix = "pending:\(api.baseURL.absoluteString):\(user.id):"

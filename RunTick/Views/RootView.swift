@@ -7,18 +7,86 @@ struct RootView: View {
     @State private var login = ""
     @State private var password = ""
     @State private var code = ""
-    @State private var history = false
+    private enum Destination: Hashable { case room, profile }
+    @State private var destination = Destination.room
+    @State private var profilePath = NavigationPath()
     var body: some View {
-        NavigationStack {
-            Group {
-                if !onboarded { GuideView { onboarded = true } }
-                else if model.user == nil { loginView }
-                else if let room = model.room { RoomView(model: room, leave: { Task { await model.perform { try await model.leave() } } }) }
-                else { lobby }
+        Group {
+            if !onboarded {
+                NavigationStack { GuideView { onboarded = true }.navigationTitle("RunTick 燃刻") }
+            } else {
+                // Native tab bars adopt Liquid Glass on iOS 26+. Keep their system
+                // background and safe-area behavior, including Reduce Transparency.
+                TabView(selection: tabSelection) {
+                    Tab("房间详情", systemImage: "house", value: Destination.room) {
+                        NavigationStack {
+                            Group {
+                                if model.user == nil { loginView }
+                                else if let room = model.room {
+                                    RoomView(model: room, leave: { Task { await model.perform { try await model.leave() } } })
+                                } else { lobby }
+                            }.navigationTitle("RunTick 燃刻")
+                        }
+                    }
+                    Tab("我的", systemImage: "person.crop.circle", value: Destination.profile) {
+                        NavigationStack(path: $profilePath) {
+                            Group {
+                                if let user = model.user { profileView(user) }
+                                else { loginView }
+                            }.navigationTitle("我的")
+                        }
+                    }
+                }
             }
-            .navigationTitle("RunTick 燃刻")
-            .overlay { if model.loading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
-            .safeAreaInset(edge: .bottom) { if !model.error.isEmpty { Text(model.error).font(.footnote).foregroundStyle(.red).padding().background(.regularMaterial).accessibilityAddTraits(.updatesFrequently) } }
+        }
+        .overlay { if model.loading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
+        .safeAreaInset(edge: .bottom) {
+            if !model.error.isEmpty {
+                Text(model.error).font(.footnote).foregroundStyle(.red).padding()
+                    .frame(maxWidth: .infinity).background(.regularMaterial)
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
+        }
+        .onChange(of: model.user?.id) { _, _ in destination = .room; profilePath = NavigationPath() }
+    }
+    private var tabSelection: Binding<Destination> {
+        Binding(get: { destination }, set: { target in
+            guard !model.loading else { return }
+            if target == .room {
+                Task {
+                    await model.perform {
+                        try await model.openCurrentRoom()
+                        destination = .room
+                    }
+                }
+            } else {
+                model.room?.interrupt()
+                destination = .profile
+            }
+        })
+    }
+    private func profileView(_ user: User) -> some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Text(String(user.loginId.prefix(1)).uppercased())
+                        .font(.largeTitle.bold()).frame(width: 72, height: 72)
+                        .background(.teal.opacity(0.12), in: RoundedRectangle(cornerRadius: 22))
+                    Text(user.loginId).font(.title2.bold())
+                    Text("账号 ID：\(user.id)").foregroundStyle(.secondary)
+                    Label("已登录", systemImage: "checkmark.circle.fill").foregroundStyle(.teal)
+                }.frame(maxWidth: .infinity).padding(.vertical)
+            }
+            Section {
+                if let api = model.api {
+                    NavigationLink { HistoryView(api: api, user: user, room: nil) } label: {
+                        Label("历史成绩", systemImage: "chart.xyaxis.line")
+                    }
+                }
+                Button(role: .destructive) { Task { await model.perform { await model.logout() } } } label: {
+                    Label("退出登录", systemImage: "power")
+                }.disabled(model.loading)
+            }
         }
     }
     var loginView: some View {
@@ -42,10 +110,7 @@ struct RootView: View {
                 Button("加入房间") { Task { await model.perform { try await model.enter(code: code) } } }.disabled(code.count != 4 || !model.lobbyReady)
                 Button("重试退出旧房间") { Task { await model.perform { try await model.leave() } } }
             }.disabled(model.loading)
-            Section {
-                if let api = model.api, let user = model.user { NavigationLink("历史成绩") { HistoryView(api: api, user: user, room: nil) } }
-                Button("退出登录", role: .destructive) { Task { await model.logout() } }
-            }
+
         }
     }
 }
