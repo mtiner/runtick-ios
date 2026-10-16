@@ -10,10 +10,10 @@ def obj(key, text): objects.append(f'{ref(key)} = {{ {text} }};'); return ref(ke
 def array(values): return '(' + ', '.join(values) + ', )' if values else '()'
 app_sources = sorted((root/'RunTick').rglob('*.swift'))
 test_sources = sorted((root/'RunTickTests').rglob('*.swift'))
-resources = sorted((root/'RunTick/Resources').rglob('*.wav')) + sorted((root/'RunTick/Resources').glob('*.xcassets')) + sorted((root/'RunTick/Resources').glob('*.icon')) + sorted((root/'RunTick').glob('PrivacyInfo.xcprivacy'))
+resources = sorted((root/'RunTick/Resources').rglob('*.wav')) + sorted((root/'RunTick/Resources').rglob('*.mp3')) + sorted((root/'RunTick/Resources').glob('*.xcassets')) + sorted((root/'RunTick/Resources').glob('*.icon')) + sorted((root/'RunTick').glob('PrivacyInfo.xcprivacy'))
 files = []
 for p in app_sources + test_sources + resources:
-    path = str(p.relative_to(root)); files.append(obj(path, f'isa = PBXFileReference; lastKnownFileType = {"sourcecode.swift" if p.suffix == ".swift" else "folder.assetcatalog" if p.suffix == ".xcassets" else "folder.icon" if p.suffix == ".icon" else "text.plist.xml" if p.suffix == ".xcprivacy" else "audio.wav"}; path = "{path}"; sourceTree = SOURCE_ROOT;'))
+    path = str(p.relative_to(root)); files.append(obj(path, f'isa = PBXFileReference; lastKnownFileType = {"sourcecode.swift" if p.suffix == ".swift" else "folder.assetcatalog" if p.suffix == ".xcassets" else "folder.icon" if p.suffix == ".icon" else "text.plist.xml" if p.suffix == ".xcprivacy" else "audio.mp3" if p.suffix == ".mp3" else "audio.wav"}; path = "{path}"; sourceTree = SOURCE_ROOT;'))
     obj('build:'+path, f'isa = PBXBuildFile; fileRef = {ref(path)};')
 obj('appProduct', 'isa = PBXFileReference; explicitFileType = wrapper.application; path = RunTick.app; sourceTree = BUILT_PRODUCTS_DIR;')
 obj('testProduct', 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RunTickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
