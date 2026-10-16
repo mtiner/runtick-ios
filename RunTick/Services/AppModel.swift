@@ -89,6 +89,7 @@ import SwiftUI
     var members: [Member] = []; var connected = false; var ready = false
     var race: Race?; var clock: ClockMapping?; var syncing = false; var progress = 0
     var error = ""; var busy = false; var firing = false; var cue = ""; var pressed = false
+    var volumeConfirmationPending = false
     var cueDeadline: Double?
     private var attemptedAutoStart: String?
     var pending: PendingEvent?; var submitting = false
@@ -138,7 +139,7 @@ import SwiftUI
         if !value.active { interrupt() }
     }
     func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
-    func interrupt() { pressed = false; eventClock = nil; audio.stop(); firing = false; cue = ""; cueDeadline = nil }
+    func interrupt() { pressed = false; eventClock = nil; audio.stop(); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
     func resume() { if race?.active == true && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
@@ -205,11 +206,18 @@ import SwiftUI
         stages = settings
         await fire()
     }
-    func fire() async {
+    func fire(allowReducedVolume: Bool = false) async {
         guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); error = "校时已更新，请再次发令" }; return }
         firing = true; let snapshot = clock
         defer { firing = false; cueDeadline = nil }
-        do { try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra) }) }
+        do {
+            // Both local and remote starts ask on the phone that actually plays the cues.
+            if !allowReducedVolume && (try audio.needsVolumeConfirmation()) {
+                volumeConfirmationPending = true
+                return
+            }
+            try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra) })
+        }
         catch is CancellationError {} catch { self.error = error.localizedDescription; audio.stop() }
     }
     func press() {

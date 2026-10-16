@@ -6,6 +6,12 @@ import AVFoundation
     private var nodes: [AVAudioPlayerNode] = []
     private var generation = UUID()
     func stop() { generation = UUID(); nodes.forEach { $0.stop() }; engine.stop(); nodes.forEach { engine.detach($0) }; nodes.removeAll() }
+    func needsVolumeConfirmation() throws -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default, options: [])
+        try session.setActive(true)
+        return session.outputVolume < 0.999
+    }
     func play(settings: [StageDelay], cue: @escaping (String, Double?) -> Void, gun: @escaping (Double, Double) -> Void) async throws {
         stop()
         guard settings.count == 3, settings.allSatisfy(\.valid) else { throw ClientError.message("等待时间须为 5–30 秒，随机上限不得小于下限") }
@@ -13,7 +19,6 @@ import AVFoundation
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setActive(true)
-        guard session.outputVolume >= 0.999 else { throw ClientError.message("请先将媒体音量调至最大，再开始发令。可使用侧边音量键，或返回声音准备页调整。") }
         let names = ["on-your-marks", "set", "gun"]
         let files = try names.map { name -> AVAudioFile in
             guard let url = Bundle.main.url(forResource: name, withExtension: "wav") else { throw ClientError.message("发令原声缺失") }

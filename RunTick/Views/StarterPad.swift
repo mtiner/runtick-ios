@@ -47,6 +47,12 @@ struct StarterPad: View {
                 #endif
                 await model.autoFire()
             }
-            .rtErrorAlert($model.error)
+            .alert("媒体音量未调至最大", isPresented: $model.volumeConfirmationPending) {
+                Button("先调整音量", role: .cancel) {}
+                Button("仍然开始") { Task { await model.fire(allowReducedVolume: true) } }
+            } message: {
+                Text("建议将媒体音量调至最大，以便清楚听到口令和枪声。也可以按当前音量继续发令，包括音量为零时。")
+            }
+            .rtErrorAlert($model.error, enabled: !model.volumeConfirmationPending)
     }
 }
