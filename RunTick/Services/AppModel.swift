@@ -7,17 +7,24 @@ import SwiftUI
     var lobbyReady = false
     var error = ""
     var room: RoomModel?
-    var serverAddress = UserDefaults.standard.string(forKey: "server") ?? ""
+    let serverAddress = AppConfiguration.serverURL.absoluteString
     func configure() throws {
-        guard let parts = URLComponents(string: serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)), parts.scheme == "https", parts.host != nil, parts.user == nil, parts.password == nil, (parts.path.isEmpty || parts.path == "/"), parts.query == nil, parts.fragment == nil, let url = parts.url else { throw ClientError.message("请输入后端 HTTPS 根地址，例如 https://你的域名") }
-        api = APIClient(baseURL: url)
+        api = APIClient(baseURL: AppConfiguration.serverURL)
         api?.unauthorized = { [weak self] in self?.clearSession() }
-        UserDefaults.standard.set(url.absoluteString, forKey: "server")
     }
     func clearSession() { room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
     func restore() async {
         guard !serverAddress.isEmpty else { return }
-        await perform { try self.configure(); let result: UserResponse = try await self.api!.request("/api/auth/me"); self.user = result.user; try await self.leave() }
+        await perform {
+            try self.configure()
+            do {
+                let result: UserResponse = try await self.api!.request("/api/auth/me")
+                self.user = result.user; try await self.leave()
+            } catch let error as ClientError where error.status == 401 {
+                // No saved session on a fresh install is expected, not a connection failure.
+                return
+            }
+        }
     }
     func perform(_ action: () async throws -> Void) async {
         guard !loading else { return }; loading = true; error = ""
@@ -125,7 +132,7 @@ import SwiftUI
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
     func calibrate() async {
-        guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; defer { syncing = false }
+        guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
         do {
             var samples: [ClockSample] = []
             for i in 0..<20 {

@@ -79,3 +79,11 @@ LaunchContainer 每次进程冷启动显示一次品牌页，复用 RTBackdrop�
 ## Apple Icon Composer 图标
 
 接入用户提供的 runtick.icon 原始包（icon.json 与 SVG 图层保持原样），ASSETCATALOG_COMPILER_APPICON_NAME 设为 runtick，系统负责默认、深色、着色与透明外观。冷启动页使用用户提供的 Default 1024px 导出图，替换旧网页低分辨率图标。六种原始 PNG 导出归档在 Design/IconComposerExports，未重新绘制或修改。CI 同时检查编译后的图标元数据与音频资源。
+
+## 原生错误提示、生产连接与声音准备
+
+生产网关固定为 https://app.runtick.cc/（来自 runtick-app/wrangler.jsonc 的 custom domain，已通过 /api/clock 验证）。移除用户输入地址及旧配置读取。首次恢复会话返回 401 是正常未登录，不显示错误。
+
+连接、房间、成绩和终点提交错误改为系统 Alert；相同的后台轮询错误关闭后不反复弹出，显式重试会重新反馈。终点时间戳仍持久化和自动重试。
+
+移除引导与开始记录前的试听，改为自动检查 AVAudioSession.outputVolume、音频输出路由及 MPVolumeView 系统音量滑块，前台恢复/路由变化时更新。发令前检查音量是否达到最大，否则给出原生提示。没有使用私有 API 或静音检测音效技巧：iOS 公共 API 不提供铃声静音开关状态，playback 会话允许静音模式下播放，因此界面说明此实际行为，不伪造静音开关读数。

@@ -13,6 +13,7 @@ import AVFoundation
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setActive(true)
+        guard session.outputVolume >= 0.999 else { throw ClientError.message("请先将媒体音量调至最大，再开始发令。可使用侧边音量键，或返回声音准备页调整。") }
         let names = ["on-your-marks", "set", "gun"]
         let files = try names.map { name -> AVAudioFile in
             guard let url = Bundle.main.url(forResource: name, withExtension: "wav") else { throw ClientError.message("发令原声缺失") }

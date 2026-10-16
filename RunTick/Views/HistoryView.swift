@@ -35,7 +35,7 @@ struct HistoryView: View {
                 }
             }
             if loading { ProgressView("加载成绩中…") }
-            if !error.isEmpty { RTCard { Text(error).foregroundStyle(.red); Button("重试") { Task { await load() } } } }
+            if !error.isEmpty { Button("重新加载成绩") { Task { await load() } } }
             if let data {
                 RTCard("历史成绩") {
                     if data.records.isEmpty { Text("暂无成绩，完成计时后由终点填写距离并保存。") }
@@ -48,6 +48,7 @@ struct HistoryView: View {
                 HStack { Button("上一页") { offset = max(0, offset - 50) }.disabled(offset == 0 || loading); Spacer(); Button("下一页") { offset += 50 }.disabled(!data.hasMore || loading) }
             }
         }
+        .rtErrorAlert($error)
         .navigationTitle("历史成绩").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
         .task(id: filter) { await load() }
         .onChange(of: athleteId) { _, _ in distance = 0; offset = 0 }

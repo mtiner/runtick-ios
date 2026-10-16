@@ -6,7 +6,6 @@ struct RoomView: View {
     let leave: () -> Void
     @State private var soundCheck = false
     @State private var distance = "100"
-    @State private var testAudio = StarterAudio()
     var finishVisible: Bool { model.raceRole == .finish && model.race?.active == true && model.race?.finishAt == nil && model.clock != nil && model.pending == nil }
     var body: some View {
         RTPage {
@@ -33,19 +32,19 @@ struct RoomView: View {
                 Button("开始记录") { soundCheck = true }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock == nil || model.syncing || model.busy)
             }
             if let pending = model.pending { RTCard("待提交时间戳") { Text("轮次 \(pending.raceId) · \(pending.event.kind.title)\n原始时间戳已保留，联网后自动重试"); Button("重试提交") { Task { await model.submit() } }.disabled(model.submitting) } }
-            if !model.error.isEmpty { RTNotice(text: model.error, error: true) }
             NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code) }
             Button("返回房间入口", action: leave)
         }
+        .rtErrorAlert($model.error, enabled: !finishVisible && !soundCheck)
         .navigationBarBackButtonHidden()
         .sheet(isPresented: $soundCheck) {
             NavigationStack { RTPage {
                 RTCard("开始前确认声音") { Text("调高音量，使用手机扬声器；确认终点已进入触控区后再发令。")
-                    Button("试听原声") { Task { try? await testAudio.play(settings: StageDelay.defaults, cue: { _ in }, gun: { _, _ in }) } }
-                    Button("已确认声音，开始记录") { testAudio.stop(); soundCheck = false; Task { await model.raceAction() } }
+                    AudioPreparationCard()
+                    Button("已确认声音，开始记录") { soundCheck = false; Task { await model.raceAction() } }
                 }
                 Button("返回准备") { soundCheck = false }
-            }.navigationTitle("声音检查") }.presentationDetents([.medium]).onDisappear { testAudio.stop() }
+            }.navigationTitle("声音准备") }.presentationDetents([.medium])
         }
         .fullScreenCover(isPresented: Binding(get: { finishVisible }, set: { _ in })) {
             FinishPad(model: model, leave: leave).interactiveDismissDisabled()
@@ -119,13 +118,13 @@ struct FinishPad: View {
                 Text("取消触控不会记录成绩").font(.footnote)
                 Spacer()
                 if model.clock?.fresh != true { Button("重新校时") { Task { await model.calibrate() } } }
-                Text(model.error).foregroundStyle(.red).padding()
             }.allowsHitTesting(false)
             TouchCapture(onDown: { model.press() }, onUp: { model.release(at: $0) }, onCancel: { model.cancelPress() }).padding(.top, 100)
             VStack { HStack { Spacer(); Button("返回房间", action: { model.cancelPress(); leave() }).buttonStyle(.glass) }; Spacer(); if model.clock?.fresh != true { Button("重新校时") { Task { await model.calibrate() } }.buttonStyle(.glass) } }.padding()
         }.animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.pressed).sensoryFeedback(.impact(weight: .light), trigger: model.pressed).foregroundStyle(Color(red: 0.07, green: 0.24, blue: 0.23))
             .onChange(of: phase) { _, phase in if phase != .active { model.cancelPress() } }
             .onDisappear { model.cancelPress() }
+            .rtErrorAlert($model.error)
     }
 }
 struct TouchCapture: UIViewRepresentable {

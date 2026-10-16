@@ -11,13 +11,13 @@ xcodegen generate
 open RunTick.xcodeproj
 ```
 
-选择 RunTick scheme 和 iPhone/iPad，在 Signing & Capabilities 中选择自己的 Team；Bundle ID 可自行调整。无需第三方 Swift 包。首次启动填写已部署 RunTick 后端的 **HTTPS 根地址**，例如 `https://你的域名`（不要填写 `/web/`）。源仓库没有记录生产域名，因此客户端不猜测服务地址。账号与网页端共用，首次 ID 登录自动注册。
+选择 RunTick scheme 和 iPhone/iPad，在 Signing & Capabilities 中选择自己的 Team；Bundle ID 可自行调整。无需第三方 Swift 包。客户端内置生产网关 `https://app.runtick.cc/`，无需填写服务器地址。账号与网页端共用，首次 ID 登录自动注册。
 
 `project.yml` 是工程配置源，修改后重新生成。仓库同时包含可直接打开的 `.xcodeproj`。调试后端必须提供可被手机访问且证书有效的 HTTPS 地址，应用不放开 ATS。
 
 ## 功能
 
-- 设备引导、传感器可用性检查、原声试听；房间内前台屏幕常亮。
+- 设备引导、媒体音量/输出设备实时检查与系统音量滑块；发令使用 playback 通道，可在铃声静音时播放。房间内前台屏幕常亮。
 - 登录、会话恢复、退出、全局 401 清理；系统 Cookie 同时用于 REST 与 WebSocket。
 - 与 runtick-app H5 对齐的“房间详情 / 我的”原生底部标签栏，iOS 26+ 系统 Liquid Glass；个人资料和历史成绩入口。
 - 创建/加入 4 位房间，双人在线状态、起点/终点角色互换，自动重连和 30 秒心跳。

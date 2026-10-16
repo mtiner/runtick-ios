@@ -26,7 +26,14 @@ private struct Envelope<T: Decodable>: Decodable {
         if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body); request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         let data: Data; let response: URLResponse
         do { (data, response) = try await session.data(for: request) }
-        catch { if Task.isCancelled { throw CancellationError() }; throw ClientError.message("网络不可用，请检查连接后重试") }
+        catch {
+            if Task.isCancelled { throw CancellationError() }
+            if let network = error as? URLError {
+                if network.code == .timedOut { throw ClientError.message("连接服务器超时，请稍后重试。") }
+                if network.code == .notConnectedToInternet || network.code == .networkConnectionLost { throw ClientError.message("网络连接已断开。请检查 Wi-Fi 或蜂窝网络后重试。") }
+            }
+            throw ClientError.message("暂时无法连接服务器，请检查网络后重试。")
+        }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 { unauthorized?() }
         let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data)

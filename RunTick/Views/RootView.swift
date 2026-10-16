@@ -23,7 +23,7 @@ struct RootView: View {
                             Group {
                                 if model.user == nil { loginView }
                                 else if let room = model.room {
-                                    RoomView(model: room, leave: { Task { await model.perform { try await model.leave() } } })
+                                    RoomView(model: room, leave: { Task { await model.perform { room.error = ""; do { try await model.leave() } catch { room.error = error.localizedDescription } } } })
                                 } else { lobby }
                             }.toolbar(.hidden, for: .navigationBar)
                         }
@@ -40,13 +40,7 @@ struct RootView: View {
             }
         }
         .overlay { if model.loading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
-        .safeAreaInset(edge: .bottom) {
-            if !model.error.isEmpty {
-                Text(model.error).font(.footnote).foregroundStyle(.red).padding()
-                    .frame(maxWidth: .infinity).background(.regularMaterial)
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
-        }
+        .rtErrorAlert($model.error, enabled: model.room == nil)
         .onChange(of: model.user?.id) { _, _ in destination = .room; profilePath = NavigationPath() }
     }
     private var tabSelection: Binding<Destination> {
@@ -104,9 +98,6 @@ struct RootView: View {
                 Button(model.loading ? "登录中…" : "登录") { Task { await model.perform { try await model.login(id: login, password: password); password = "" } } }
                     .buttonStyle(RTButtonStyle()).disabled(model.loading).accessibilityIdentifier("login.submit")
             }.rtEntrance(0.08)
-            DisclosureGroup("连接服务") {
-                TextField("后端 HTTPS 根地址", text: $model.serverAddress).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().rtField()
-            }.font(.footnote).foregroundStyle(RT.muted).padding(.horizontal, 4)
             Text("登录即可创建或加入计时房间").font(.footnote).foregroundStyle(RT.muted).frame(maxWidth: .infinity).padding(.top, 4)
             RTBrandFooter()
         }
@@ -139,7 +130,6 @@ struct RootView: View {
 struct GuideView: View {
     let proceed: () -> Void
     @State private var capabilities = "点击检查设备能力"
-    @State private var audio = StarterAudio()
     private let motion = CMMotionManager()
     var body: some View {
         RTPage {
@@ -156,11 +146,12 @@ struct GuideView: View {
             RTCard("设备准备") {
                 Text(capabilities).font(.footnote).foregroundStyle(RT.muted)
                 Button("检查设备能力") { capabilities = "陀螺仪：\(motion.isGyroAvailable ? "可用" : "不支持") · 加速度计：\(motion.isAccelerometerAvailable ? "可用" : "不支持")\n系统会话存储 · 房间内自动常亮" }
-                Button("试听发令原声") { Task { do { try await audio.play(settings: Array(repeating: StageDelay(random: false, min: 0, max: 0), count: 3), cue: { capabilities = $0 }, gun: { _, _ in }) } catch { capabilities = error.localizedDescription } } }
+
             }.rtEntrance(0.12)
+            AudioPreparationCard().rtEntrance(0.14)
             Button("开始使用", action: proceed).buttonStyle(RTButtonStyle()).accessibilityIdentifier("guide.continue").rtEntrance(0.16)
             Text("请使用手机扬声器。计时估算误差不含人工反应。").font(.caption).foregroundStyle(RT.muted).frame(maxWidth: .infinity)
             RTBrandFooter()
-        }.onDisappear { audio.stop() }
+        }
     }
 }

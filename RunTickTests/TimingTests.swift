@@ -2,6 +2,11 @@ import XCTest
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testProductionGatewayIsBuiltIn() {
+        XCTAssertEqual(AppConfiguration.serverURL.scheme, "https")
+        XCTAssertEqual(AppConfiguration.serverURL.host, "app.runtick.cc")
+        XCTAssertEqual(AppConfiguration.serverURL.path, "/")
+    }
     func testCurrentRoomNavigationResponse() throws {
         let decoder = JSONDecoder()
         let empty = try decoder.decode(CurrentRoomResponse.self, from: Data(#"{"room":null}"#.utf8))
