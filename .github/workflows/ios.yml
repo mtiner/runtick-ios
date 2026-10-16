@@ -23,6 +23,7 @@ jobs:
         run: |
           APP=DerivedData/Build/Products/Debug-iphonesimulator/RunTick.app
           test -f "$APP/Assets.car"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName" "$APP/Info.plist" | grep -x runtick
           for NAME in gun set on-your-marks; do
             test -f "$APP/$NAME.wav"
           done

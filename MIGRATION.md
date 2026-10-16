@@ -75,3 +75,7 @@ CI 明确要求 iOS 26 SDK；没有在当前 Linux 环境声称 Apple 构建/真
 LaunchContainer 每次进程冷启动显示一次品牌页，复用 RTBackdrop（网站同款薄荷/柠檬径向渐变）、网站原始 apple-touch-icon，以及原生矢量中英字标。图标、名称与浅灰 slogan 居中排列。采用“为每一次认真训练而生”。轻微淡入缩放与退场遵守减少动态效果。
 
 会话恢复与约 1.3 秒品牌展示并行，网络异常不会无限停留在品牌页；随后进入原有使用引导或登录/房间入口。后台回到前台不会重播。系统启动画面仍由 iOS 生成，该品牌页是首帧后的原生启动过渡，不冒充系统 Launch Screen。DEBUG 专用 --brand-preview 仅用于 CI 截图。
+
+## Apple Icon Composer 图标
+
+接入用户提供的 runtick.icon 原始包（icon.json 与 SVG 图层保持原样），ASSETCATALOG_COMPILER_APPICON_NAME 设为 runtick，系统负责默认、深色、着色与透明外观。冷启动页使用用户提供的 Default 1024px 导出图，替换旧网页低分辨率图标。六种原始 PNG 导出归档在 Design/IconComposerExports，未重新绘制或修改。CI 同时检查编译后的图标元数据与音频资源。

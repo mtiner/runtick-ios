@@ -10,10 +10,10 @@ def obj(key, text): objects.append(f'{ref(key)} = {{ {text} }};'); return ref(ke
 def array(values): return '(' + ', '.join(values) + ', )' if values else '()'
 app_sources = sorted((root/'RunTick').rglob('*.swift'))
 test_sources = sorted((root/'RunTickTests').rglob('*.swift'))
-resources = sorted((root/'RunTick/Resources').rglob('*.wav')) + sorted((root/'RunTick/Resources').glob('*.xcassets'))
+resources = sorted((root/'RunTick/Resources').rglob('*.wav')) + sorted((root/'RunTick/Resources').glob('*.xcassets')) + sorted((root/'RunTick/Resources').glob('*.icon'))
 files = []
 for p in app_sources + test_sources + resources:
-    path = str(p.relative_to(root)); files.append(obj(path, f'isa = PBXFileReference; lastKnownFileType = {"sourcecode.swift" if p.suffix == ".swift" else "folder.assetcatalog" if p.suffix == ".xcassets" else "audio.wav"}; path = "{path}"; sourceTree = SOURCE_ROOT;'))
+    path = str(p.relative_to(root)); files.append(obj(path, f'isa = PBXFileReference; lastKnownFileType = {"sourcecode.swift" if p.suffix == ".swift" else "folder.assetcatalog" if p.suffix == ".xcassets" else "folder.icon" if p.suffix == ".icon" else "audio.wav"}; path = "{path}"; sourceTree = SOURCE_ROOT;'))
     obj('build:'+path, f'isa = PBXBuildFile; fileRef = {ref(path)};')
 obj('appProduct', 'isa = PBXFileReference; explicitFileType = wrapper.application; path = RunTick.app; sourceTree = BUILT_PRODUCTS_DIR;')
 obj('testProduct', 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RunTickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
@@ -24,7 +24,7 @@ for target, sources, res in [('app', app_sources, resources), ('test', test_sour
         obj(target+kind, f'isa = {isa}; buildActionMask = 2147483647; files = {array([ref("build:"+str(p.relative_to(root))) for p in paths])}; runOnlyForDeploymentPostprocessing = 0;')
     for mode in ['Debug', 'Release']:
         settings = {'SWIFT_VERSION':'5.0', 'IPHONEOS_DEPLOYMENT_TARGET':'26.0', 'SDKROOT':'iphoneos', 'TARGETED_DEVICE_FAMILY':'"1,2"', 'GENERATE_INFOPLIST_FILE':'YES', 'CODE_SIGN_STYLE':'Automatic', 'PRODUCT_NAME':'"$(TARGET_NAME)"', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.mtiner.runtick' + ('.tests' if target=='test' else ''), 'SWIFT_OPTIMIZATION_LEVEL': '"-Onone"' if mode=='Debug' else '"-O"', 'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if mode=='Debug' else '""', 'ENABLE_TESTABILITY':'YES' if mode=='Debug' else 'NO'}
-        if target=='app': settings.update({'INFOPLIST_KEY_CFBundleDisplayName':'"RunTick 燃刻"','INFOPLIST_KEY_NSMotionUsageDescription':'"检查运动传感器是否可用，计时使用枪声和触屏。"', 'INFOPLIST_KEY_UIApplicationSceneManifest_Generation':'YES', 'INFOPLIST_KEY_UILaunchScreen_Generation':'YES', 'INFOPLIST_KEY_UISupportedInterfaceOrientations':'UIInterfaceOrientationPortrait', 'INFOPLIST_KEY_ITSAppUsesNonExemptEncryption':'NO'})
+        if target=='app': settings.update({'ASSETCATALOG_COMPILER_APPICON_NAME':'runtick', 'INFOPLIST_KEY_CFBundleDisplayName':'"RunTick 燃刻"','INFOPLIST_KEY_NSMotionUsageDescription':'"检查运动传感器是否可用，计时使用枪声和触屏。"', 'INFOPLIST_KEY_UIApplicationSceneManifest_Generation':'YES', 'INFOPLIST_KEY_UILaunchScreen_Generation':'YES', 'INFOPLIST_KEY_UISupportedInterfaceOrientations':'UIInterfaceOrientationPortrait', 'INFOPLIST_KEY_ITSAppUsesNonExemptEncryption':'NO'})
         else: settings.update({'TEST_HOST':'"$(BUILT_PRODUCTS_DIR)/RunTick.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RunTick"','BUNDLE_LOADER':'"$(TEST_HOST)"'})
         obj(target+mode, f'isa = XCBuildConfiguration; buildSettings = {{ '+ ' '.join(f'{k} = {v};' for k,v in settings.items()) + f' }}; name = {mode};')
     obj(target+'config', f'isa = XCConfigurationList; buildConfigurations = ({ref(target+"Debug")}, {ref(target+"Release")}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
