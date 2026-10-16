@@ -33,7 +33,7 @@ struct SessionStore {
             status = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
         }
         guard status == errSecSuccess else {
-            throw ClientError.message("无法安全保存登录状态，请重试登录。")
+            throw ClientError(status: 0, code: "KEYCHAIN_\(status)", message: "无法安全保存登录状态，请重试登录。")
         }
     }
     func clear() { SecItemDelete(query as CFDictionary) }
