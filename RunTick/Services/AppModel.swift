@@ -95,6 +95,7 @@ import SwiftUI
     private var eventClock: ClockMapping?
     private var socket: URLSessionWebSocketTask?
     private var stopped = false
+    private var receivedRoomState = false
     private var autoRetry = true
     private var retryAfter: Double = 0
     private(set) var roleSelection = RoleSelection()
@@ -112,7 +113,7 @@ import SwiftUI
     func start() {
         tasks.append(Task { await calibrate() })
         tasks.append(Task {
-            do { let detail: RoomDetail = try await api.request("/api/rooms/\(code)"); members = detail.members } catch { self.error = error.localizedDescription }
+            do { let detail: RoomDetail = try await api.request("/api/rooms/\(code)"); if !receivedRoomState { members = detail.members } } catch { self.error = error.localizedDescription }
             while !Task.isCancelled {
                 do {
                     let result: RaceResponse = try await api.request("/api/rooms/\(code)/races")
@@ -232,7 +233,7 @@ import SwiftUI
                     let data: Data
                     switch message { case .string(let text): data = Data(text.utf8); case .data(let bytes): data = bytes; @unknown default: continue }
                     guard let event = try? JSONDecoder().decode(HubState.self, from: data), event.type == "state" else { continue }
-                    connected = true; retry = 0; members = event.members ?? []; roleSelection.receivedServerState(); ready = event.ready ?? false
+                    connected = true; retry = 0; receivedRoomState = true; members = event.members ?? []; roleSelection.receivedServerState(); ready = event.ready ?? false
                 }
             } catch { connected = false; ready = false }
             heartbeat.cancel(); ws.cancel(with: .goingAway, reason: nil)
