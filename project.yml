@@ -26,8 +26,7 @@ targets:
     resources:
       - path: RunTick/Resources/Audio
         type: group
-      - path: RunTick/Resources/Brand
-        type: group
+      - path: RunTick/Resources/Brand.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mtiner.runtick

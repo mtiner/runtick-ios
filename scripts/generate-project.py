@@ -10,10 +10,10 @@ def obj(key, text): objects.append(f'{ref(key)} = {{ {text} }};'); return ref(ke
 def array(values): return '(' + ', '.join(values) + ', )' if values else '()'
 app_sources = sorted((root/'RunTick').rglob('*.swift'))
 test_sources = sorted((root/'RunTickTests').rglob('*.swift'))
-resources = sorted(p for p in (root/'RunTick/Resources').rglob('*') if p.suffix in {'.wav', '.png'})
+resources = sorted((root/'RunTick/Resources').rglob('*.wav')) + sorted((root/'RunTick/Resources').glob('*.xcassets'))
 files = []
 for p in app_sources + test_sources + resources:
-    path = str(p.relative_to(root)); files.append(obj(path, f'isa = PBXFileReference; lastKnownFileType = {"sourcecode.swift" if p.suffix == ".swift" else "image.png" if p.suffix == ".png" else "audio.wav"}; path = "{path}"; sourceTree = SOURCE_ROOT;'))
+    path = str(p.relative_to(root)); files.append(obj(path, f'isa = PBXFileReference; lastKnownFileType = {"sourcecode.swift" if p.suffix == ".swift" else "folder.assetcatalog" if p.suffix == ".xcassets" else "audio.wav"}; path = "{path}"; sourceTree = SOURCE_ROOT;'))
     obj('build:'+path, f'isa = PBXBuildFile; fileRef = {ref(path)};')
 obj('appProduct', 'isa = PBXFileReference; explicitFileType = wrapper.application; path = RunTick.app; sourceTree = BUILT_PRODUCTS_DIR;')
 obj('testProduct', 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RunTickTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')

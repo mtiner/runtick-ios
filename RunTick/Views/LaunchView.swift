@@ -30,7 +30,7 @@ struct BrandLaunchView: View {
         ZStack {
             RTBackdrop()
             VStack(spacing: 0) {
-                Image("brand-icon").resizable().interpolation(.high).scaledToFit()
+                Image("BrandIcon").resizable().interpolation(.high).scaledToFit()
                     .frame(width: 112, height: 112)
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .shadow(color: RT.deep.opacity(0.16), radius: 24, y: 12)
