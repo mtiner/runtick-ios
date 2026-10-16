@@ -55,7 +55,12 @@ struct RoomView: View {
         }
         .rtErrorAlert($model.error, enabled: !recording && !soundCheck)
         .navigationBarBackButtonHidden()
-        .onAppear { recording = recordingVisible }
+        .onAppear {
+            recording = recordingVisible
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--settings-preview") { soundCheck = true }
+            #endif
+        }
         .onChange(of: recordingVisible) { _, visible in
             if visible && soundCheck { soundCheck = false }
             else { recording = visible }

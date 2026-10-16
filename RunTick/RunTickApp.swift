@@ -8,7 +8,7 @@ import SwiftUI
             Group {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--starter-preview") { TimingPreviewView(role: .start) }
-                else if ProcessInfo.processInfo.arguments.contains("--finish-preview") { TimingPreviewView(role: .finish) }
+                else if ProcessInfo.processInfo.arguments.contains("--finish-preview") || ProcessInfo.processInfo.arguments.contains("--settings-preview") { TimingPreviewView(role: .finish) }
                 else { LaunchContainer(model: model) }
                 #else
                 LaunchContainer(model: model)

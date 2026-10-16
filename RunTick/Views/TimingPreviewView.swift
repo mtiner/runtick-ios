@@ -14,6 +14,7 @@ struct TimingPreviewView: View {
         room.race = Race(id: "preview", status: "ready", createdAt: MonotonicClock.now(),
                          startAt: nil, finishAt: nil, elapsedMs: nil, uncertaintyMs: nil,
                          startUserId: 1, finishUserId: 2, savedResult: nil)
+        if ProcessInfo.processInfo.arguments.contains("--settings-preview") { room.race = nil }
         if role == .start {
             room.cue = "预备"; room.cueDeadline = MonotonicClock.now() + 12000; room.firing = true
         }
