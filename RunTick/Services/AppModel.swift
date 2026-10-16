@@ -140,6 +140,8 @@ import SwiftUI
         tasks.append(Task { await socketLoop() })
     }
     func update(_ value: Race) {
+        var value = value
+        if race?.id == value.id && value.reactionStatus == nil { value.reactionStatus = race?.reactionStatus; value.reactionMs = race?.reactionMs }
         if let race, !race.accepts(value) { return }
         race = value
         if !value.active { interrupt() }

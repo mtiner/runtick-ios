@@ -22,7 +22,6 @@ struct Race: Codable, Identifiable {
         guard newer.createdAt >= createdAt else { return false }
         guard newer.id == id else { return true }
         return !(!active && newer.active) && !(savedResult != nil && newer.savedResult == nil)
-            && !(reactionStatus != nil && newer.reactionStatus == nil)
             && !(startAt != nil && newer.startAt == nil) && !(finishAt != nil && newer.finishAt == nil)
     }
 }
