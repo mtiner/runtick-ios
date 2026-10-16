@@ -1,0 +1,45 @@
+# 迁移记录与验收
+
+源：`mtiner/runtick`，commit `5f2d6abf143dab1c7de342d0c22461dfc7097b3b`。
+
+| 网页端来源 | iOS 实现 |
+| --- | --- |
+| auth store、api.ts | AppModel、APIClient、Models |
+| rooms、room-entry、路由退出逻辑 | RootView、AppModel.leave |
+| RoomDetail、useRoomSocket | RoomView、RoomModel，REST 轮次每秒轮询，WebSocket 成员推送 |
+| useClock | ClockMapping、MonotonicClock、RoomModel.calibrate |
+| starterSettings、starterAudio、SoundCheck | StageDelay、StarterAudio（AVAudioEngine）、RoomView |
+| RacePanel | RoomModel、RoomView、FinishPad、TouchCapture |
+| DistanceSave、PbCelebration | 距离校验、预设距离、PB 奖杯、触觉反馈与提升提示 |
+| HistoryView、HistoryTrend、smoothCurve | HistoryView、Swift Charts 单调插值、逐点列表 |
+| Guide、device permissions、wake lock | GuideView、CoreMotion 可用性、系统 Cookie、idle timer |
+
+原站 `/start`、`/finish`、`/result` 为旧静态示例且被路由重定向；没有把示例虚构数据作为真实功能。原生应用不需要浏览器 AudioContext 解锁、网页 Cookie 探测和添加到主屏幕教程，分别以系统音频会话、URLSession Cookie 和已安装 App 替代。传感器在现有网页实际计时链路中不参与起跑检测，原生也不制造自动检测功能。
+
+后端仍由原 runtick 仓库维护，包含身份、角色互斥、双人限制、计时有效性、幂等事件、PB 和历史权限；本仓库不另行部署/复制一套生产数据库。API 路径和字段与源仓库保持兼容，原生请求不带浏览器 Origin。原始 WAV 从源仓库原样复制。
+
+## 时间与持久化
+
+使用进程启动时的 epoch + systemUptime，避免设备墙钟跳变影响计时。校时公式与网页相同，枪声按 AVAudioEngine 的 hostTime 排程。音频输出延迟由 AVAudioSession 估计，再加入 20 ms 音频误差预算；这不等于实际扬声器延迟保证，必须真机测量，尤其不能把蓝牙输出视为可精确计时。人工反应误差单独由使用者承担。
+
+待提交事件以服务地址、用户 ID、房间隔离，持久化事件时间而非重试时重新取时间。恢复登录时在离开旧房间之前先补交该用户待提交事件。服务端永久拒绝的事件保留以便诊断，错误不会静默丢弃。非当前用户不重放。Cookie 交给系统保存，不保存密码。进入后台取消按压/音频，回前台重新校时。
+
+## 尚需在 Apple 环境验收
+
+- 使用 iOS 27 SDK 完整构建、XCTest、无障碍/Dynamic Type 与 iPhone/iPad 布局。
+- 两台真机及一台网页混合加入：角色互换、在线离线、房间满员、退出与重连。
+- 起点试听后发令，终点提前按住，松开得到相同成绩；后台/系统打断不能误记。
+- 固定/随机等待、零等待、最大等待、音频路由变化与扬声器枪声时间实测。
+- 断网松手，恢复网络补交原始时间戳；杀进程再启动补交；重复提交保持幂等。
+- 终点早于枪声、超一小时、连续下一组、仅终点保存距离、PB 提升和并列。
+- 历史运动员权限、距离、四种排序、50 条分页、趋势跨页不变与空记录。
+- 401 清理、服务不可达、Cookie 恢复、切换服务地址账号隔离。
+
+CI 明确要求 iOS 27 SDK；没有在当前 Linux 环境声称 Apple 构建/真机验收已经通过。
+
+## 本次已执行验证
+
+- Swift 6.2 Linux 前端对全部应用和测试 Swift 源文件语法解析通过。
+- `swift test`：5 个 XCTest 用例全部通过（偏移/误差公式、不可用网络样本、等待设置、原始时间戳持久化、乱序响应保护）。
+- 使用真实 FoundationNetworking/Observation 对 APIClient、AppModel/RoomModel 做 Linux 类型检查通过；仅将 Apple 专用音频服务替换为签名相同的验证桩，此项不覆盖 AVFoundation/SwiftUI 类型检查。
+- 三个 WAV 与源仓库逐字节一致；工程源文件、音频引用、scheme XML 与 YAML 配置做静态检查。
