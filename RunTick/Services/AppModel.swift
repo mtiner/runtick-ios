@@ -212,9 +212,11 @@ import SwiftUI
         defer { firing = false; cueDeadline = nil }
         do {
             // Both local and remote starts ask on the phone that actually plays the cues.
-            if !allowReducedVolume && (try audio.needsVolumeConfirmation()) {
-                volumeConfirmationPending = true
-                return
+            if !allowReducedVolume {
+                if try audio.needsVolumeConfirmation() {
+                    volumeConfirmationPending = true
+                    return
+                }
             }
             try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra) })
         }
