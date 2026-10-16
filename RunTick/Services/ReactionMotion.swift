@@ -23,7 +23,7 @@ import Foundation
             self.report()
         }
         try await Task.sleep(for: .milliseconds(2200))
-        preflight = !received ? "unavailable" : gate.ready ? "ready" : "unstable"
+        preflight = !received ? "unavailable" : (gate.ready && gate.movedAt == nil) ? "ready" : "unstable"
     }
     func gun(at: Double, result: @escaping (ReactionResult) -> Void) {
         gunAt = at; callback = result
