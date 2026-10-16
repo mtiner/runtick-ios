@@ -48,6 +48,12 @@ jobs:
           xcrun simctl launch --terminate-running-process "$ID" cc.runtick.app -onboarded YES
           sleep 3
           xcrun simctl io "$ID" screenshot screenshots/login.png
+          xcrun simctl launch --terminate-running-process "$ID" com.mtiner.runtick --starter-preview
+          sleep 2
+          xcrun simctl io "$ID" screenshot screenshots/starter.png
+          xcrun simctl launch --terminate-running-process "$ID" com.mtiner.runtick --finish-preview
+          sleep 2
+          xcrun simctl io "$ID" screenshot screenshots/finish.png
       - uses: actions/upload-artifact@v4
         with:
           name: ios-screenshots

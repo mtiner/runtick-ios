@@ -13,11 +13,13 @@ struct RoomView: View {
         RTPage {
             RTBrand(onExit: leave, exiting: model.busy).rtEntrance()
             RTHero(badge: "房间 \(model.code)", title: model.race?.status == "completed" ? "本次成绩" : model.race?.active == true ? (model.raceRole == .start ? "起跑发令" : "终点记录") : "房间准备", subtitle: "准备好，就出发。").rtEntrance(0.04)
+            if model.race?.active != true {
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "wifi" : "wifi.slash")
                 if model.syncing { ProgressView("HTTP 校时 \(model.progress)/20", value: Double(model.progress), total: 20) }
                 else if let clock = model.clock { Text("20 次校时 · 平均 RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.uncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
                 Button("重新校准时间") { Task { await model.calibrate() } }.disabled(model.syncing || model.firing || model.pressed)
+            }
             }
             if model.race?.active != true && model.race?.status != "completed" {
                 RTCard("我的角色") {
@@ -95,15 +97,15 @@ struct RoomView: View {
                     Button("保存成绩") { Task { await model.save(distance: Int(distance) ?? 0) } }.buttonStyle(RTButtonStyle()).disabled(model.busy)
                 } else { Text("等待终点记录员填写距离并保存") }
             } else if race.active {
+                if model.clock == nil {
+                    if model.syncing { ProgressView("正在校时…") }
+                    else { Button("重新校时") { Task { await model.calibrate() } } }
+                }
                 if model.raceRole == .start {
                     Text(model.cue.isEmpty ? "等待发令" : model.cue).font(.title2)
                     ForEach(0..<3, id: \.self) { i in
-                        VStack(alignment: .leading) {
-                            Text(["点击 → 各就位", "各就位结束 → 预备", "预备结束 → 枪声"][i]).font(.headline)
-                            Toggle("随机等待", isOn: $model.stages[i].random)
-                            HStack { Text("等待 / 下限（秒）"); TextField("秒", value: $model.stages[i].min, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).rtField() }
-                            if model.stages[i].random { HStack { Text("上限（秒）"); TextField("秒", value: $model.stages[i].max, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).rtField() } }
-                        }.disabled(model.firing || race.startAt != nil || model.pending != nil)
+                        StageDelayControl(title: ["点击 → 各就位", "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
+                            .disabled(model.firing || race.startAt != nil || model.pending != nil)
                     }
                     Button("开始发令") { Task { await model.fire() } }.buttonStyle(RTButtonStyle()).disabled(model.clock == nil || model.syncing || model.firing || race.startAt != nil || model.pending != nil || !model.stages.allSatisfy(\.valid))
                 } else { Text(race.finishAt == nil ? "校时完成后进入终点触控区" : "终点时间已保存，等待枪声时间戳") }
@@ -121,7 +123,7 @@ struct FinishPad: View {
         ZStack {
             (model.pressed ? Color(red: 0.72, green: 0.93, blue: 0.47) : Color(red: 0.40, green: 0.86, blue: 0.83)).ignoresSafeArea()
             VStack(spacing: 30) {
-                HStack { Text("\(model.user.loginId) · 房间 \(model.code)"); Spacer(); Button("返回", action: { model.cancelPress(); leave() }) }.padding()
+                HStack { Text("\(model.user.loginId) · 房间 \(model.code)"); Spacer() }.padding()
                 Spacer()
                 ZStack {
                     Circle().stroke(.white.opacity(0.25), lineWidth: 1).frame(width: 180, height: 180)
@@ -132,7 +134,6 @@ struct FinishPad: View {
                 Text(model.race?.startAt == nil ? "可以提前按住 · 等待枪声" : "计时中 · 松开记录")
                 Text("取消触控不会记录成绩").font(.footnote)
                 Spacer()
-                if model.clock?.fresh != true { Button("重新校时") { Task { await model.calibrate() } } }
             }.allowsHitTesting(false)
             TouchCapture(onDown: { model.press() }, onUp: { model.release(at: $0) }, onCancel: { model.cancelPress() }).padding(.top, 100)
             VStack { HStack { Spacer(); Button("返回房间", action: { model.cancelPress(); leave() }).buttonStyle(.glass) }; Spacer(); if model.clock?.fresh != true { Button("重新校时") { Task { await model.calibrate() } }.buttonStyle(.glass) } }.padding()

@@ -67,7 +67,20 @@ final class TimingTests: XCTestCase {
         XCTAssertFalse(StageDelay(random: true, min: 5, max: 2).valid)
         XCTAssertFalse(StageDelay(random: false, min: .nan, max: 2).valid)
         XCTAssertFalse(StageDelay(random: false, min: 31, max: 31).valid)
-        XCTAssertEqual(StageDelay(random: false, min: 2, max: 3).sample(), 2)
+        XCTAssertEqual(StageDelay(random: false, min: 5, max: 10).sample(), 5)
+    }
+    func testLegacyDelaySettingsMigrateToSliderBounds() {
+        XCTAssertEqual(StageDelay(random: true, min: 1, max: 2).normalized, StageDelay(random: true, min: 5, max: 5))
+        XCTAssertEqual(StageDelay(random: true, min: 40, max: 0).normalized, StageDelay(random: true, min: 30, max: 30))
+        XCTAssertFalse(StageDelay(random: false, min: 4, max: 5).valid)
+    }
+    func testRangeThumbsCannotCrossOrExceedBounds() {
+        var stage = StageDelay(random: true, min: 10, max: 20)
+        stage.setLower(25); XCTAssertEqual(stage.min, 20)
+        stage.setUpper(0); XCTAssertEqual(stage.max, 20)
+        stage.setLower(-10); XCTAssertEqual(stage.min, 5)
+        stage.setUpper(99); XCTAssertEqual(stage.max, 30)
+        XCTAssertTrue(stage.valid)
     }
     func testOriginalTimestampSurvivesPersistence() throws {
         let pending = PendingEvent(code: "0123", raceId: "r1", userId: 7, event: TimingEvent(kind: .finish, at: 12345.678, uncertaintyMs: 12))

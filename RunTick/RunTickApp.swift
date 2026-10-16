@@ -5,7 +5,15 @@ import SwiftUI
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
-            LaunchContainer(model: model)
+            Group {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--starter-preview") { TimingPreviewView(role: .start) }
+                else if ProcessInfo.processInfo.arguments.contains("--finish-preview") { TimingPreviewView(role: .finish) }
+                else { LaunchContainer(model: model) }
+                #else
+                LaunchContainer(model: model)
+                #endif
+            }
                 .tint(Color(red: 0.12, green: 0.62, blue: 0.58))
                 .onChange(of: phase) { _, value in
                     UIApplication.shared.isIdleTimerDisabled = value == .active && model.room != nil

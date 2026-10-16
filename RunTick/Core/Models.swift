@@ -40,9 +40,16 @@ struct EmptyResponse: Decodable {}
 struct ClockResponse: Decodable { let clientSentAt: Double; let receivedAt: Double; let sentAt: Double; let processingMs: Double }
 struct StageDelay: Codable, Equatable {
     var random: Bool; var min: Double; var max: Double
-    var valid: Bool { min.isFinite && max.isFinite && (0...30).contains(min) && (0...30).contains(max) && (!random || max >= min) }
+    var valid: Bool { min.isFinite && max.isFinite && (5...30).contains(min) && (5...30).contains(max) && max >= min }
     func sample() -> Double { random ? Double.random(in: min...max) : min }
-    static let defaults = [StageDelay(random: false, min: 2, max: 2), StageDelay(random: false, min: 2, max: 3), StageDelay(random: true, min: 1, max: 2)]
+    var normalized: Self {
+        let lower = min.isFinite ? Swift.min(30, Swift.max(5, min.rounded())) : 5
+        let upper = max.isFinite ? Swift.min(30, Swift.max(lower, max.rounded())) : lower
+        return Self(random: random, min: lower, max: upper)
+    }
+    mutating func setLower(_ value: Double) { min = Swift.min(max, Swift.max(5, value.rounded())) }
+    mutating func setUpper(_ value: Double) { max = Swift.max(min, Swift.min(30, value.rounded())) }
+    static let defaults = [StageDelay(random: false, min: 5, max: 5), StageDelay(random: false, min: 5, max: 5), StageDelay(random: true, min: 5, max: 10)]
 }
 struct ClockSample { let sent: Double; let received: Double; let serverReceived: Double; let serverSent: Double }
 struct ClockMapping {

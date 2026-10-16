@@ -107,7 +107,7 @@ import SwiftUI
     init(code: String, user: User, api: APIClient) {
         self.code = code; self.user = user; self.api = api
         let saved = UserDefaults.standard.data(forKey: "starter").flatMap { try? JSONDecoder().decode([StageDelay].self, from: $0) }
-        stages = saved?.count == 3 && saved!.allSatisfy(\.valid) ? saved! : StageDelay.defaults
+        stages = saved?.count == 3 ? saved!.map(\.normalized) : StageDelay.defaults
         pending = UserDefaults.standard.data(forKey: pendingKey).flatMap { try? JSONDecoder().decode(PendingEvent.self, from: $0) }
     }
     func start() {
@@ -119,7 +119,11 @@ import SwiftUI
                     let result: RaceResponse = try await api.request("/api/rooms/\(code)/races")
                     if let race = result.race { update(race) }
                     if pending != nil && autoRetry && ProcessInfo.processInfo.systemUptime >= retryAfter { await submit() }
-                } catch is CancellationError { break } catch { self.error = error.localizedDescription }
+                } catch is CancellationError { break } catch {
+                    let status = (error as? ClientError)?.status ?? 0
+                    // A temporary transport failure must not interrupt local timing.
+                    if !(race?.active == true && clock != nil && (status == 0 || status >= 500)) { self.error = error.localizedDescription }
+                }
                 do { try await Task.sleep(for: .seconds(1)) } catch { break }
             }
         })
@@ -132,7 +136,7 @@ import SwiftUI
     }
     func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
     func interrupt() { pressed = false; eventClock = nil; audio.stop(); firing = false; cue = "" }
-    func resume() { if race?.active == true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
+    func resume() { if race?.active == true && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
@@ -150,7 +154,7 @@ import SwiftUI
                 samples.append(ClockSample(sent: sent, received: received, serverReceived: response.receivedAt, serverSent: response.sentAt)); progress = i + 1
             }
             clock = try ClockMapping.average(samples)
-        } catch { clock = nil; if !(error is CancellationError) { self.error = error.localizedDescription } }
+        } catch { if clock?.fresh != true { clock = nil }; if !(error is CancellationError) { self.error = error.localizedDescription } }
     }
     func pick(_ target: DeviceRole) async {
         guard race?.active != true, connected, !busy, !stopped,

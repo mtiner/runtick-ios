@@ -8,7 +8,7 @@ import AVFoundation
     func stop() { generation = UUID(); nodes.forEach { $0.stop() }; engine.stop(); nodes.forEach { engine.detach($0) }; nodes.removeAll() }
     func play(settings: [StageDelay], cue: @escaping (String) -> Void, gun: @escaping (Double, Double) -> Void) async throws {
         stop()
-        guard settings.count == 3, settings.allSatisfy(\.valid) else { throw ClientError.message("等待时间须为 0–30 秒，随机上限不得小于下限") }
+        guard settings.count == 3, settings.allSatisfy(\.valid) else { throw ClientError.message("等待时间须为 5–30 秒，随机上限不得小于下限") }
         let token = generation, clicked = MonotonicClock.now()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback, mode: .default, options: [])
