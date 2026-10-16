@@ -4,6 +4,8 @@ import UIKit
 struct RoomView: View {
     @Bindable var model: RoomModel
     let leave: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var roleHighlight
     @State private var soundCheck = false
     @State private var distance = "100"
     var finishVisible: Bool { model.raceRole == .finish && model.race?.active == true && model.race?.finishAt == nil && model.clock != nil && model.pending == nil }
@@ -19,11 +21,24 @@ struct RoomView: View {
             }
             if model.race?.active != true && model.race?.status != "completed" {
                 RTCard("我的角色") {
-                    HStack(spacing: 8) { ForEach(DeviceRole.allCases, id: \.self) { role in
+                    HStack(spacing: 0) { ForEach(DeviceRole.allCases, id: \.self) { role in
                         Button { Task { await model.pick(role) } } label: {
-                            Label(role.title, systemImage: role == .start ? "figure.run" : "flag.checkered")
-                        }.buttonStyle(RTButtonStyle(secondary: model.role != role)).disabled(!model.connected || model.busy)
-                    } }
+                            HStack(spacing: 8) {
+                                if model.roleSaving && model.role == role { ProgressView().controlSize(.small) }
+                                else { Image(systemName: role == .start ? "figure.run" : "flag.checkered") }
+                                Text(role.title)
+                            }.font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 13)
+                                .background {
+                                    if model.role == role {
+                                        Capsule().fill(.white).shadow(color: RT.ink.opacity(0.07), radius: 5, y: 2)
+                                            .matchedGeometryEffect(id: "selected-role", in: roleHighlight)
+                                    }
+                                }.contentShape(Capsule())
+                        }.buttonStyle(.plain).disabled(!model.connected || model.busy || soundCheck)
+                            .accessibilityValue(model.role == role ? (model.roleSaving ? "已选中，正在同步" : "已选中") : "未选中")
+                    } }.padding(4).background(RT.ink.opacity(0.055), in: Capsule())
+                        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: model.role)
+                    if model.roleSaving { Text("正在同步角色…").font(.caption).foregroundStyle(RT.muted) }
                 }.rtEntrance(0.08)
                 RTCard("房间成员（\(model.members.count)/2）") { ForEach(model.members) { member in HStack { Text(member.loginId); Spacer(); Text("\(member.deviceRole?.title ?? "同步中") · \(member.online == true ? "在线" : "离线")").foregroundStyle(.secondary) } } }
             }

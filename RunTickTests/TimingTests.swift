@@ -2,6 +2,43 @@ import XCTest
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testRoleChangesImmediatelyAndBlocksAnotherRequest() {
+        var state = RoleSelection()
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        XCTAssertEqual(state.displayed(serverRole: .start), .finish)
+        XCTAssertTrue(state.saving)
+        XCTAssertFalse(state.begin(.start, serverRole: .start))
+        state.receivedServerState()
+        XCTAssertEqual(state.displayed(serverRole: .start), .finish)
+    }
+    func testFailedRoleChangeRollsBack() {
+        var state = RoleSelection()
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        state.failed()
+        XCTAssertFalse(state.saving)
+        XCTAssertEqual(state.displayed(serverRole: .start), .start)
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+    }
+    func testRoleRequestCompletesBeforeSocketAcknowledgement() {
+        var state = RoleSelection()
+        XCTAssertFalse(state.begin(.start, serverRole: .start))
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        state.succeeded(serverRole: .start)
+        XCTAssertFalse(state.saving)
+        XCTAssertEqual(state.displayed(serverRole: .start), .finish)
+        state.receivedServerState()
+        XCTAssertEqual(state.displayed(serverRole: .finish), .finish)
+        XCTAssertTrue(state.begin(.start, serverRole: .finish))
+    }
+    func testSocketAcknowledgementBeforeRoleRequestReturns() {
+        var state = RoleSelection()
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        state.receivedServerState()
+        XCTAssertTrue(state.saving)
+        state.succeeded(serverRole: .finish)
+        XCTAssertNil(state.optimistic)
+        XCTAssertFalse(state.saving)
+    }
     func testProductionGatewayIsBuiltIn() {
         XCTAssertEqual(AppConfiguration.serverURL.scheme, "https")
         XCTAssertEqual(AppConfiguration.serverURL.host, "app.runtick.cc")

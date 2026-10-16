@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 struct HistoryView: View {
     let api: APIClient; let user: User; let room: String?
@@ -10,7 +9,6 @@ struct HistoryView: View {
     @State private var offset = 0
     @State private var loading = false
     @State private var error = ""
-    @State private var selected: String?
     var filter: String { "\(athleteId):\(distance):\(sort):\(offset)" }
     var body: some View {
         RTPage {
@@ -22,17 +20,6 @@ struct HistoryView: View {
                 }
                 Picker("距离", selection: $distance) { Text("全部距离").tag(0); ForEach(data?.distances ?? [], id: \.self) { Text("\($0) 米").tag($0) } }
                 Picker("排序", selection: $sort) { Text("最新").tag("date-desc"); Text("最早").tag("date-asc"); Text("最快").tag("result-asc"); Text("最慢").tag("result-desc") }.pickerStyle(.segmented)
-            }
-            if distance > 0, let points = data?.trend, !points.isEmpty {
-                RTCard("\(distance) 米 · 最近 \(points.count) 次 · 越低越快") {
-                    Chart(Array(points.enumerated()), id: \.element.id) { index, point in
-                        LineMark(x: .value("次序", index + 1), y: .value("秒", point.elapsedMs / 1000)).interpolationMethod(.monotone)
-                        PointMark(x: .value("次序", index + 1), y: .value("秒", point.elapsedMs / 1000))
-                    }.foregroundStyle(RT.deep).frame(height: 200).chartYScale(domain: trendDomain(points))
-                    ForEach(points) { point in
-                        Button { selected = point.id } label: { HStack { Text(date(point.performedAt)); Spacer(); Text(String(format: "%.3f 秒", point.elapsedMs / 1000)); if selected == point.id { Image(systemName: "checkmark") } }.font(.caption) }
-                    }
-                }
             }
             if loading { ProgressView("加载成绩中…") }
             if !error.isEmpty { Button("重新加载成绩") { Task { await load() } } }
@@ -56,11 +43,6 @@ struct HistoryView: View {
         .onChange(of: sort) { _, _ in offset = 0 }
         .refreshable { await load() }
     }
-    func trendDomain(_ points: [TrendPoint]) -> ClosedRange<Double> {
-        let values = points.map { $0.elapsedMs / 1000 }, low = values.min() ?? 0, high = values.max() ?? 1
-        let pad = max(0.1, (high - low) * 0.15)
-        return max(0, low - pad)...(high + pad)
-    }
     func date(_ value: Double) -> String { Date(timeIntervalSince1970: value / 1000).formatted(date: .abbreviated, time: .shortened) }
     func load() async {
         loading = true; error = ""
@@ -68,7 +50,7 @@ struct HistoryView: View {
         defer { if requested == filter { loading = false } }
         let rule = sort.split(separator: "-")
         var query = URLComponents(); query.path = "/api/history"
-        query.queryItems = [URLQueryItem(name: "athleteId", value: String(athleteId == 0 ? user.id : athleteId)), URLQueryItem(name: "sort", value: String(rule[0])), URLQueryItem(name: "direction", value: String(rule[1])), URLQueryItem(name: "offset", value: String(offset)), URLQueryItem(name: "includeTrend", value: "true")]
+        query.queryItems = [URLQueryItem(name: "athleteId", value: String(athleteId == 0 ? user.id : athleteId)), URLQueryItem(name: "sort", value: String(rule[0])), URLQueryItem(name: "direction", value: String(rule[1])), URLQueryItem(name: "offset", value: String(offset)), URLQueryItem(name: "includeTrend", value: "false")]
         if distance > 0 { query.queryItems?.append(URLQueryItem(name: "distance", value: String(distance))) }
         if let room { query.queryItems?.append(URLQueryItem(name: "room", value: room)) }
         do {
