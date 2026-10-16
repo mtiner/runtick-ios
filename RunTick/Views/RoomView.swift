@@ -68,7 +68,7 @@ struct RoomView: View {
         .sheet(isPresented: $soundCheck, onDismiss: { recording = recordingVisible }) {
             NavigationStack {
                 RTPage {
-                    RTHero(badge: "房间 \(model.code)", title: "发令设置", subtitle: "确认后，双端同时进入记录页面。")
+                    Text("房间 \(model.code) · 确认后双端进入记录页面").font(.subheadline).foregroundStyle(RT.muted)
                     RTCard("发令时间") {
                         ForEach(0..<3, id: \.self) { i in
                             StageDelayControl(title: ["开始 → 各就位", "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
@@ -76,11 +76,14 @@ struct RoomView: View {
                     }.disabled(model.busy)
                     if model.role == .start { AudioPreparationCard() }
                     else { Text("请确认起点手机的媒体音量已调至最大，并使用扬声器播放发令声音。").font(.footnote).foregroundStyle(RT.muted) }
-                    Button(model.busy ? "正在开始…" : "确认并开始记录") {
-                        Task { await model.beginRecording() }
-                    }.buttonStyle(RTButtonStyle()).disabled(model.busy || !model.stages.allSatisfy(\.valid))
-                    Button("返回准备") { soundCheck = false }.disabled(model.busy)
-                }.navigationTitle("开始记录").navigationBarTitleDisplayMode(.inline)
+                }.safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 12) {
+                        Button(model.busy ? "正在开始…" : "确认并开始记录") {
+                            Task { await model.beginRecording() }
+                        }.buttonStyle(RTButtonStyle()).disabled(model.busy || !model.stages.allSatisfy(\.valid))
+                        Button("返回准备") { soundCheck = false }.font(.subheadline).disabled(model.busy)
+                    }.padding(.horizontal, 24).padding(.vertical, 14).background(.ultraThinMaterial)
+                }.navigationTitle("发令设置").navigationBarTitleDisplayMode(.inline)
                     .rtErrorAlert($model.error)
             }.presentationDetents([.large]).interactiveDismissDisabled(model.busy)
         }
