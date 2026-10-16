@@ -31,6 +31,9 @@ jobs:
           xcrun simctl status_bar "$ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
           xcrun simctl install "$ID" DerivedData/Build/Products/Debug-iphonesimulator/RunTick.app
           mkdir -p screenshots
+          xcrun simctl launch --terminate-running-process "$ID" com.mtiner.runtick --brand-preview
+          sleep 2
+          xcrun simctl io "$ID" screenshot screenshots/launch.png
           xcrun simctl launch --terminate-running-process "$ID" com.mtiner.runtick -onboarded NO
           sleep 3
           xcrun simctl io "$ID" screenshot screenshots/guide.png
