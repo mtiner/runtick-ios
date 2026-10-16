@@ -68,8 +68,14 @@ struct RoomView: View {
                 RTPage {
                     Text("房间 \(model.code) · 确认后双端进入记录页面").font(.subheadline).foregroundStyle(RT.muted)
                     RTCard("发令时间") {
+                        Toggle("检测起跑反应时", isOn: Binding(get: { model.stages[0].reactionEnabled == true }, set: { model.stages[0].reactionEnabled = $0 }))
+                        Text("有起跑器并固定手机后开启；三点式起跑可关闭，不影响发令或跑步成绩。").font(.footnote).foregroundStyle(RT.muted)
+                        Toggle("播放各就位口令", isOn: Binding(get: { model.stages[0].enabled != false }, set: { model.stages[0].enabled = $0 }))
+                        Text("将起点手机贴靠或固定在起跑器上，并保持稳定，以检测起跑反应。结果为设备运动估算。").font(.footnote).foregroundStyle(RT.muted)
                         ForEach(0..<3, id: \.self) { i in
-                            StageDelayControl(title: ["开始 → 各就位", "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
+                            if i != 0 || model.stages[0].enabled != false {
+                                StageDelayControl(title: ["开始 → 各就位", model.stages[0].enabled == false ? "开始 → 预备" : "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
+                            }
                         }
                     }.disabled(model.busy)
                     if model.role == .start { AudioPreparationCard() }
@@ -107,6 +113,7 @@ struct RoomView: View {
                     ViewThatFits { resultNumber(race, size: 62); resultNumber(race, size: 42) }
                 }.frame(maxWidth: .infinity).padding(.vertical, 20).rtEntrance()
 
+                Text(ReactionResult.text(race.reactionMs, race.reactionStatus) + " · 手机运动检测估算").font(.subheadline)
                 Text("服务端已保存 · 估算误差 ±\(race.uncertaintyMs ?? 0, specifier: "%.0f") ms（不含人工反应）").font(.footnote)
                 if let saved = race.savedResult {
                     if saved.isPb { RTPBCelebration(improvement: saved.pbImprovementMs) }

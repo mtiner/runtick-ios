@@ -5,6 +5,18 @@ import FoundationNetworking
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testMotionRequiresStableBaselineAndSustainedMovement() {
+        var gate = MotionGate()
+        gate.sample(at: 0, acceleration: 2, rotation: 1)
+        XCTAssertNil(gate.movedAt)
+        for at in stride(from: 100.0, through: 700.0, by: 10) { gate.sample(at: at, acceleration: 0.01, rotation: 0.01) }
+        XCTAssertTrue(gate.ready)
+        gate.sample(at: 710, acceleration: 2, rotation: 1)
+        gate.sample(at: 720, acceleration: 0, rotation: 0)
+        XCTAssertNil(gate.movedAt)
+        for at in stride(from: 800.0, through: 840.0, by: 10) { gate.sample(at: at, acceleration: 0.7, rotation: 0.5) }
+        XCTAssertEqual(gate.movedAt, 800)
+    }
     func testRecordingSettingsTravelWithRaceAndLegacyRacesStillDecode() throws {
         let legacy = #"{"id":"round","status":"ready","createdAt":123,"startUserId":1,"finishUserId":2}"#
         let decoder = JSONDecoder()
@@ -152,15 +164,15 @@ final class TimingTests: XCTestCase {
         XCTAssertEqual(StageDelay(random: false, min: 5, max: 10).sample(), 5)
     }
     func testLegacyDelaySettingsMigrateToSliderBounds() {
-        XCTAssertEqual(StageDelay(random: true, min: 1, max: 2).normalized, StageDelay(random: true, min: 5, max: 10))
+        XCTAssertEqual(StageDelay(random: true, min: 1, max: 2).normalized, StageDelay(random: true, min: 1, max: 2))
         XCTAssertEqual(StageDelay(random: true, min: 40, max: 0).normalized, StageDelay(random: true, min: 30, max: 30))
-        XCTAssertFalse(StageDelay(random: false, min: 4, max: 5).valid)
+        XCTAssertTrue(StageDelay(random: false, min: 4, max: 5).valid)
     }
     func testRangeThumbsCannotCrossOrExceedBounds() {
         var stage = StageDelay(random: true, min: 10, max: 20)
         stage.setLower(25); XCTAssertEqual(stage.min, 20)
         stage.setUpper(0); XCTAssertEqual(stage.max, 20)
-        stage.setLower(-10); XCTAssertEqual(stage.min, 5)
+        stage.setLower(-10); XCTAssertEqual(stage.min, 0)
         stage.setUpper(99); XCTAssertEqual(stage.max, 30)
         XCTAssertTrue(stage.valid)
     }

@@ -14,6 +14,7 @@ struct HistoryView: View {
         RTPage {
             RTBrand().rtEntrance()
             RTHero(badge: "训练档案", title: "历史成绩", subtitle: "每一次出发，都在向更好的自己靠近。").rtEntrance(0.04)
+            NavigationLink("单人起跑记录") { SoloHistoryView(api: api) }
             RTCard("筛选") {
                 if let data, data.athletes.count > 1 {
                     Picker("运动员", selection: $athleteId) { ForEach(data.athletes) { athlete in Text(athlete.id == user.id ? "我" : athlete.loginId).tag(athlete.id) } }
@@ -27,7 +28,7 @@ struct HistoryView: View {
                 RTCard("历史成绩") {
                     if data.records.isEmpty { Text("暂无成绩，完成计时后由终点填写距离并保存。") }
                     ForEach(data.records) { record in HStack {
-                        VStack(alignment: .leading) { Text("\(record.distance) 米"); Text(date(record.performedAt)).font(.caption).foregroundStyle(.secondary) }
+                        VStack(alignment: .leading) { Text("\(record.distance) 米"); Text(date(record.performedAt)).font(.caption).foregroundStyle(.secondary); Text(ReactionResult.text(record.reactionMs, record.reactionStatus)).font(.caption).foregroundStyle(RT.muted) }
                         Spacer(); Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).monospacedDigit()
                         if record.isPb { RTChip(text: "PB", lemon: true) }
                     }.padding(.vertical, 10) }

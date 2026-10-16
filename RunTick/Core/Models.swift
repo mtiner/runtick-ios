@@ -16,11 +16,13 @@ struct Race: Codable, Identifiable {
     let startAt: Double?; let finishAt: Double?; let elapsedMs: Double?; let uncertaintyMs: Double?
     let startUserId: Int; let finishUserId: Int; var savedResult: SavedResult?
     var starterSettings: [StageDelay]? = nil
+    var reactionMs: Double? = nil; var reactionStatus: String? = nil
     var active: Bool { status == "ready" || status == "running" }
     func accepts(_ newer: Race) -> Bool {
         guard newer.createdAt >= createdAt else { return false }
         guard newer.id == id else { return true }
         return !(!active && newer.active) && !(savedResult != nil && newer.savedResult == nil)
+            && !(reactionStatus != nil && newer.reactionStatus == nil)
             && !(startAt != nil && newer.startAt == nil) && !(finishAt != nil && newer.finishAt == nil)
     }
 }
@@ -30,6 +32,7 @@ struct HistoryRecord: Codable, Identifiable {
     var id: String { raceId }; let raceId: String; let athleteId: Int; let recorderId: Int
     let distance: Int; let elapsedMs: Double; let performedAt: Double; let savedAt: Double
     let isPb: Bool; let pbImprovementMs: Double?
+    var reactionMs: Double? = nil; var reactionStatus: String? = nil
 }
 struct TrendPoint: Decodable, Identifiable { var id: String { raceId }; let raceId: String; let elapsedMs: Double; let performedAt: Double }
 struct HistoryData: Decodable { let trend: [TrendPoint]; let athletes: [User]; let athleteId: Int; let distances: [Int]; let records: [HistoryRecord]; let hasMore: Bool }
@@ -41,15 +44,16 @@ struct EmptyResponse: Decodable {}
 struct ClockResponse: Decodable { let clientSentAt: Double; let receivedAt: Double; let sentAt: Double; let processingMs: Double }
 struct StageDelay: Codable, Equatable {
     var random: Bool; var min: Double; var max: Double
-    var valid: Bool { min.isFinite && max.isFinite && (5...30).contains(min) && (5...30).contains(max) && max >= min }
+    var enabled: Bool? = nil
+    var reactionEnabled: Bool? = nil
+    var valid: Bool { min.isFinite && max.isFinite && (0...30).contains(min) && (0...30).contains(max) && max >= min }
     func sample() -> Double { random ? Double.random(in: min...max) : min }
     var normalized: Self {
-        let lower = min.isFinite ? Swift.min(30, Swift.max(5, min.rounded())) : 5
+        let lower = min.isFinite ? Swift.min(30, Swift.max(0, min.rounded())) : 5
         var upper = max.isFinite ? Swift.min(30, Swift.max(lower, max.rounded())) : lower
-        if random && max < 5 && lower < 30 { upper = Swift.min(30, lower + 5) }
-        return Self(random: random, min: lower, max: upper)
+        return Self(random: random, min: lower, max: upper, enabled: enabled, reactionEnabled: reactionEnabled)
     }
-    mutating func setLower(_ value: Double) { min = Swift.min(max, Swift.max(5, value.rounded())) }
+    mutating func setLower(_ value: Double) { min = Swift.min(max, Swift.max(0, value.rounded())) }
     mutating func setUpper(_ value: Double) { max = Swift.max(min, Swift.min(30, value.rounded())) }
     static let defaults = [StageDelay(random: false, min: 5, max: 5), StageDelay(random: false, min: 5, max: 5), StageDelay(random: true, min: 5, max: 10)]
 }

@@ -8,7 +8,7 @@ struct RootView: View {
     @State private var login = ""
     @State private var password = ""
     @State private var code = ""
-    private enum Destination: Hashable { case room, profile }
+    private enum Destination: Hashable { case room, starter, profile }
     @State private var destination = Destination.room
     @State private var profilePath = NavigationPath()
     var body: some View {
@@ -29,6 +29,12 @@ struct RootView: View {
                             }.toolbar(.hidden, for: .navigationBar)
                         }
                     }
+                    Tab("起跑发令", systemImage: "figure.run", value: Destination.starter) {
+                        NavigationStack {
+                            if let api = model.api, let user = model.user { SoloStartView(api: api, user: user) }
+                            else { loginView }
+                        }
+                    }
                     Tab("我的", systemImage: "person.crop.circle", value: Destination.profile) {
                         NavigationStack(path: $profilePath) {
                             Group {
@@ -43,7 +49,7 @@ struct RootView: View {
         .overlay { if model.loading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
         .rtErrorAlert($model.error, enabled: model.room == nil)
         .onChange(of: destination) { _, target in
-            if target == .profile { model.room?.interrupt() }
+            if target != .room { model.room?.interrupt() }
         }
         .task(id: destination) {
             guard destination == .room, model.user != nil, !model.loading else { return }
@@ -75,6 +81,7 @@ struct RootView: View {
                     HStack { Image(systemName: "chart.xyaxis.line"); Text("历史成绩"); Spacer(); Image(systemName: "arrow.right") }
                 }.rtEntrance(0.12)
             }
+            NavigationLink("关于 RunTick") { AboutView() }
             Button { Task { await model.perform { await model.logout() } } } label: { Label("退出登录", systemImage: "power") }
                 .disabled(model.loading).rtEntrance(0.16)
         }

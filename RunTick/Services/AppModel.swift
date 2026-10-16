@@ -63,6 +63,7 @@ import SwiftUI
     }
     func replayPending() async throws {
         guard let api, let user else { return }
+        await TrainingSync.retry(api: api, userId: user.id)
         let prefix = "pending:\(api.baseURL.absoluteString):\(user.id):"
         let legacyPrefix = "pending:\(api.baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))):\(user.id):"
         for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix(prefix) || key.hasPrefix(legacyPrefix) {
@@ -96,6 +97,7 @@ import SwiftUI
     var stages: [StageDelay] { didSet { if stages.count == 3 && stages.allSatisfy(\.valid) { UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter") } } }
     private var tasks: [Task<Void, Never>] = []
     private var audio = StarterAudio()
+    private var reactionMotion = ReactionMotion()
     private var eventClock: ClockMapping?
     private var socket: URLSessionWebSocketTask?
     private var stopped = false
@@ -143,7 +145,7 @@ import SwiftUI
         if !value.active { interrupt() }
     }
     func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
-    func interrupt() { pressed = false; eventClock = nil; audio.stop(); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
+    func interrupt() { pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
     func resume() { if race?.active == true && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
@@ -223,7 +225,19 @@ import SwiftUI
                     return
                 }
             }
-            try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra) })
+            cue = "请保持手机与起跑器稳定…"
+            try await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
+            try Task.checkCancellation()
+            try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra)
+                guard let raceId = self.race?.id else { return }
+                self.reactionMotion.gun(at: at) { result in
+                    self.race?.reactionMs = result.reactionMs; self.race?.reactionStatus = result.reactionStatus
+                    Task {
+                        do { try await TrainingSync.send(api: self.api, userId: self.user.id, path: "/api/rooms/\(self.code)/races/\(raceId)/reaction", body: ["reactionMs": result.reactionMs as Any? ?? NSNull(), "reactionStatus": result.reactionStatus], id: raceId) }
+                        catch { self.error = "反应时已保留，联网后补交：" + error.localizedDescription }
+                    }
+                }
+            })
         }
         catch is CancellationError {} catch { self.error = error.localizedDescription; audio.stop() }
     }
