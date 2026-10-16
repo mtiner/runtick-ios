@@ -158,6 +158,9 @@ final class TimingTests: XCTestCase {
     }
     func testDelayValidation() {
         XCTAssertTrue(StageDelay.defaults.allSatisfy(\.valid))
+        XCTAssertFalse(StageDelay(random: false, min: 11, max: 11).valid)
+        XCTAssertFalse(StageDelay(random: true, min: 1.5, max: 5).valid)
+        XCTAssertEqual(StageDelay(random: true, min: 1.6, max: 25).normalized, StageDelay(random: true, min: 2, max: 10))
         XCTAssertFalse(StageDelay(random: true, min: 5, max: 2).valid)
         XCTAssertFalse(StageDelay(random: false, min: .nan, max: 2).valid)
         XCTAssertFalse(StageDelay(random: false, min: 31, max: 31).valid)
@@ -165,15 +168,15 @@ final class TimingTests: XCTestCase {
     }
     func testLegacyDelaySettingsMigrateToSliderBounds() {
         XCTAssertEqual(StageDelay(random: true, min: 1, max: 2).normalized, StageDelay(random: true, min: 1, max: 2))
-        XCTAssertEqual(StageDelay(random: true, min: 40, max: 0).normalized, StageDelay(random: true, min: 30, max: 30))
+        XCTAssertEqual(StageDelay(random: true, min: 40, max: 0).normalized, StageDelay(random: true, min: 10, max: 10))
         XCTAssertTrue(StageDelay(random: false, min: 4, max: 5).valid)
     }
     func testRangeThumbsCannotCrossOrExceedBounds() {
-        var stage = StageDelay(random: true, min: 10, max: 20)
-        stage.setLower(25); XCTAssertEqual(stage.min, 20)
-        stage.setUpper(0); XCTAssertEqual(stage.max, 20)
+        var stage = StageDelay(random: true, min: 5, max: 8)
+        stage.setLower(25); XCTAssertEqual(stage.min, 8)
+        stage.setUpper(0); XCTAssertEqual(stage.max, 8)
         stage.setLower(-10); XCTAssertEqual(stage.min, 0)
-        stage.setUpper(99); XCTAssertEqual(stage.max, 30)
+        stage.setUpper(99); XCTAssertEqual(stage.max, 10)
         XCTAssertTrue(stage.valid)
     }
     func testOriginalTimestampSurvivesPersistence() throws {

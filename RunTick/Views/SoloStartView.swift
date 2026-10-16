@@ -10,7 +10,7 @@ import SwiftUI
     private var previousIdleTimer = false
     init(api: APIClient, user: User) {
         self.api = api; self.user = user
-        if let bytes = UserDefaults.standard.data(forKey: "starter"), let saved = try? JSONDecoder().decode([StageDelay].self, from: bytes), saved.count == 3, saved.allSatisfy(\.valid) { stages = saved }
+        if let bytes = UserDefaults.standard.data(forKey: "starter"), let saved = try? JSONDecoder().decode([StageDelay].self, from: bytes), saved.count == 3 { stages = saved.map(\.normalized) }
     }
     func start(allowReducedVolume: Bool = false) {
         guard !running, stages.count == 3, stages.allSatisfy(\.valid) else { return }

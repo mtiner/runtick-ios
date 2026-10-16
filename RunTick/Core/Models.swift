@@ -45,15 +45,15 @@ struct StageDelay: Codable, Equatable {
     var random: Bool; var min: Double; var max: Double
     var enabled: Bool? = nil
     var reactionEnabled: Bool? = nil
-    var valid: Bool { min.isFinite && max.isFinite && (0...30).contains(min) && (0...30).contains(max) && max >= min }
+    var valid: Bool { min.isFinite && max.isFinite && min == min.rounded() && max == max.rounded() && (0...10).contains(min) && (0...10).contains(max) && max >= min }
     func sample() -> Double { random ? Double.random(in: min...max) : min }
     var normalized: Self {
-        let lower = min.isFinite ? Swift.min(30, Swift.max(0, min.rounded())) : 5
-        var upper = max.isFinite ? Swift.min(30, Swift.max(lower, max.rounded())) : lower
+        let lower = min.isFinite ? Swift.min(10, Swift.max(0, min.rounded())) : 5
+        let upper = max.isFinite ? Swift.min(10, Swift.max(lower, max.rounded())) : lower
         return Self(random: random, min: lower, max: upper, enabled: enabled, reactionEnabled: reactionEnabled)
     }
-    mutating func setLower(_ value: Double) { min = Swift.min(max, Swift.max(0, value.rounded())) }
-    mutating func setUpper(_ value: Double) { max = Swift.max(min, Swift.min(30, value.rounded())) }
+    mutating func setLower(_ value: Double) { min = Swift.min(10, Swift.min(max, Swift.max(0, value.rounded()))) }
+    mutating func setUpper(_ value: Double) { max = Swift.max(min, Swift.min(10, value.rounded())) }
     static let defaults = [StageDelay(random: false, min: 5, max: 5), StageDelay(random: false, min: 5, max: 5), StageDelay(random: true, min: 5, max: 10)]
 }
 struct ClockSample { let sent: Double; let received: Double; let serverReceived: Double; let serverSent: Double }

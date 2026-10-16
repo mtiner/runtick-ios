@@ -10,7 +10,7 @@ struct StageDelayControl: View {
                 Spacer(minLength: 8)
                 Toggle("随机", isOn: $stage.random).font(.caption).fixedSize()
                 .onChange(of: stage.random) { _, random in
-                    if random && stage.max == stage.min && stage.min < 30 { stage.max = min(30, stage.min + 5) }
+                    if random && stage.max == stage.min && stage.min < 10 { stage.max = min(10, stage.min + 5) }
                 }
             }
             HStack {
@@ -20,10 +20,10 @@ struct StageDelayControl: View {
             }.font(.subheadline)
             if stage.random { DelayRangeSlider(stage: $stage) }
             else {
-                Slider(value: Binding(get: { stage.min }, set: { value in stage.min = value; stage.max = max(stage.max, value) }), in: 0...30, step: 1)
+                Slider(value: Binding(get: { stage.min }, set: { value in stage.min = value; stage.max = max(stage.max, value) }), in: 0...10, step: 1)
                     .accessibilityLabel("\(title)，固定等待秒数")
             }
-            HStack { Text("0 秒"); Spacer(); Text("30 秒") }.font(.caption).foregroundStyle(RT.muted)
+            HStack { Text("0 秒"); Spacer(); Text("10 秒") }.font(.caption).foregroundStyle(RT.muted)
         }.padding(.vertical, 8)
     }
 }
@@ -37,8 +37,8 @@ private struct DelayRangeSlider: View {
     var body: some View {
         GeometryReader { geometry in
             let width = max(1, geometry.size.width - 44)
-            let low = 22 + stage.min / 30 * width
-            let high = 22 + stage.max / 30 * width
+            let low = 22 + stage.min / 10 * width
+            let high = 22 + stage.max / 10 * width
             ZStack(alignment: .leading) {
                 Capsule().fill(RT.ink.opacity(0.10)).frame(height: 5).padding(.horizontal, 22)
                 Capsule().fill(RT.deep).frame(width: max(0, high - low), height: 5).offset(x: low)
@@ -53,7 +53,7 @@ private struct DelayRangeSlider: View {
                         let a = abs(drag.startLocation.x - low), b = abs(drag.startLocation.x - high)
                         lowerActive = abs(a - b) < 1 ? drag.translation.width < 0 : a < b
                     }
-                    let value = 0 + (drag.location.x - 22) / width * 30
+                    let value = 0 + (drag.location.x - 22) / width * 10
                     if lowerActive == true { stage.setLower(value) } else { stage.setUpper(value) }
                 }.onEnded { _ in lowerActive = nil })
         }.frame(height: 44).opacity(enabled ? 1 : 0.45)
