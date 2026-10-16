@@ -64,8 +64,8 @@ struct RTHero: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             RTChip(text: badge)
-            Text(title).font(.system(size: 32, weight: .bold)).tracking(-0.8).fixedSize(horizontal: false, vertical: true)
-            if !subtitle.isEmpty { Text(subtitle).font(.system(size: 15)).foregroundStyle(RT.muted).lineSpacing(5) }
+            Text(title).font(.system(size: 28, weight: .heavy)).tracking(0.3).multilineTextAlignment(.center).frame(maxWidth: .infinity).fixedSize(horizontal: false, vertical: true)
+            if !subtitle.isEmpty { Text(subtitle).font(.system(size: 14)).foregroundStyle(RT.muted).lineSpacing(5).multilineTextAlignment(.center).frame(maxWidth: .infinity) }
         }.padding(.vertical, 8)
     }
 }
@@ -80,8 +80,12 @@ struct RTButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(size: 15, weight: .semibold))
             .frame(maxWidth: .infinity, minHeight: 24).padding(.horizontal, 16).padding(.vertical, 15)
-            .foregroundStyle(RT.ink)
-            .background(secondary ? Color.white.opacity(0.75) : RT.aqua, in: RoundedRectangle(cornerRadius: 16))
+            .foregroundStyle(secondary ? RT.ink : .white)
+            .background {
+                RoundedRectangle(cornerRadius: 16).fill(secondary ?
+                    LinearGradient(colors: [Color(hex: 0xEDF4F2), Color(hex: 0xEDF4F2)], startPoint: .top, endPoint: .bottom) :
+                    LinearGradient(colors: [Color(hex: 0x7CE5DD), Color(hex: 0x4FD2C8)], startPoint: .top, endPoint: .bottom))
+            }
             .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(secondary ? RT.ink.opacity(0.10) : Color.white.opacity(0.45)) }
             .shadow(color: secondary ? .clear : RT.aqua.opacity(0.30), radius: 12, y: 6)
             .opacity(enabled ? 1 : 0.42).scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1)
@@ -131,5 +135,27 @@ struct RTPBCelebration: View {
             .overlay(alignment: .bottom) { Text("新的个人最佳！").font(.headline) }
             .onAppear { withAnimation(reduceMotion ? nil : .spring(response: 0.65, dampingFraction: 0.55)) { revealed = true } }
             .accessibilityLabel("新的个人最佳")
+    }
+}
+
+struct RTCodeInput: View {
+    @Binding var code: String
+    @FocusState private var focused: Bool
+    var body: some View {
+        ZStack {
+            HStack(spacing: 10) {
+                ForEach(0..<4) { index in
+                    let digits = Array(code)
+                    Text(index < digits.count ? String(digits[index]) : " ")
+                        .font(.system(size: 24, weight: .bold, design: .rounded)).monospacedDigit()
+                        .frame(maxWidth: .infinity).frame(height: 58)
+                        .background(RT.background, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(focused && code.count == index ? RT.deep : RT.ink.opacity(0.12), lineWidth: focused && code.count == index ? 2 : 1) }
+                }
+            }.accessibilityHidden(true)
+            TextField("", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode)
+                .foregroundStyle(.clear).tint(.clear).focused($focused)
+                .accessibilityLabel("4 位房间号").frame(height: 58)
+        }.contentShape(Rectangle()).onTapGesture { focused = true }
     }
 }

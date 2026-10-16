@@ -15,7 +15,7 @@ struct RoomView: View {
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "wifi" : "wifi.slash")
                 if model.syncing { ProgressView("HTTP 校时 \(model.progress)/20", value: Double(model.progress), total: 20) }
-                else if let clock = model.clock { Text("20 次校时 · 平均 RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.uncertaintyMs, specifier: "%.0f") ms") }
+                else if let clock = model.clock { Text("20 次校时 · 平均 RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.uncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
                 Button("重新校准时间") { Task { await model.calibrate() } }.disabled(model.syncing || model.firing || model.pressed)
             }
             if model.race?.active != true && model.race?.status != "completed" {
@@ -112,7 +112,7 @@ struct FinishPad: View {
                 ZStack {
                     Circle().stroke(.white.opacity(0.25), lineWidth: 1).frame(width: 180, height: 180)
                     Circle().stroke(.white.opacity(0.45), lineWidth: 2).frame(width: model.pressed ? 130 : 110, height: model.pressed ? 130 : 110)
-                    Image(systemName: "hand.point.up.fill").font(.system(size: 64, weight: .light))
+                    Image(systemName: "hand.point.up.fill").font(.system(size: 64, weight: .light)).symbolEffect(.pulse, options: .repeating, isActive: model.pressed && !reduceMotion)
                 }.animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.65), value: model.pressed)
                 Text(model.pressed ? "冲线时松手" : "按住屏幕，等待冲线").font(.largeTitle.bold()).multilineTextAlignment(.center)
                 Text(model.race?.startAt == nil ? "可以提前按住 · 等待枪声" : "计时中 · 松开记录")

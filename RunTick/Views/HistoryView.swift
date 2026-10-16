@@ -21,7 +21,7 @@ struct HistoryView: View {
                     Picker("运动员", selection: $athleteId) { ForEach(data.athletes) { athlete in Text(athlete.id == user.id ? "我" : athlete.loginId).tag(athlete.id) } }
                 }
                 Picker("距离", selection: $distance) { Text("全部距离").tag(0); ForEach(data?.distances ?? [], id: \.self) { Text("\($0) 米").tag($0) } }
-                Picker("排序", selection: $sort) { Text("最新").tag("date-desc"); Text("最早").tag("date-asc"); Text("最快").tag("result-asc"); Text("最慢").tag("result-desc") }
+                Picker("排序", selection: $sort) { Text("最新").tag("date-desc"); Text("最早").tag("date-asc"); Text("最快").tag("result-asc"); Text("最慢").tag("result-desc") }.pickerStyle(.segmented)
             }
             if distance > 0, let points = data?.trend, !points.isEmpty {
                 RTCard("\(distance) 米 · 最近 \(points.count) 次 · 越低越快") {

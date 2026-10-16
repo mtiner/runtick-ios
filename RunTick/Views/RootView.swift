@@ -123,8 +123,7 @@ struct RootView: View {
             }.rtEntrance(0.08)
             RTCard {
                 HStack { Image(systemName: "rectangle.grid.2x2").foregroundStyle(RT.deep); Text("加入房间").font(.title3.bold()) }
-                TextField("输入 4 位房间号", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded)).tracking(12).multilineTextAlignment(.center).rtField()
+                RTCodeInput(code: $code)
                     .onChange(of: code) { _, value in
                         code = String(value.filter { $0.isASCII && $0.isNumber }.prefix(4))
                         if code.count == 4 && !model.loading && model.lobbyReady { Task { await model.perform { try await model.enter(code: code) } } }
