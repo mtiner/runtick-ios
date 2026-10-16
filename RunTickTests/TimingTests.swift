@@ -47,14 +47,20 @@ final class TimingTests: XCTestCase {
     }
     #endif
 
-    func testRoleChangesImmediatelyAndBlocksAnotherRequest() {
+    func testRoleChangesImmediatelyAndQueuesLatestTap() {
         var state = RoleSelection()
         XCTAssertTrue(state.begin(.finish, serverRole: .start))
         XCTAssertEqual(state.displayed(serverRole: .start), .finish)
         XCTAssertTrue(state.saving)
         XCTAssertFalse(state.begin(.start, serverRole: .start))
-        state.receivedServerState()
-        XCTAssertEqual(state.displayed(serverRole: .start), .finish)
+        XCTAssertEqual(state.displayed(serverRole: .start), .start)
+        state.receivedServerState(serverRole: .finish)
+        XCTAssertEqual(state.displayed(serverRole: .finish), .start)
+        state.succeeded(serverRole: .finish)
+        XCTAssertEqual(state.inFlight, .start)
+        state.succeeded(serverRole: .start)
+        XCTAssertFalse(state.saving)
+        XCTAssertEqual(state.displayed(serverRole: .start), .start)
     }
     func testFailedRoleChangeRollsBack() {
         var state = RoleSelection()
@@ -71,18 +77,49 @@ final class TimingTests: XCTestCase {
         state.succeeded(serverRole: .start)
         XCTAssertFalse(state.saving)
         XCTAssertEqual(state.displayed(serverRole: .start), .finish)
-        state.receivedServerState()
+        state.receivedServerState(serverRole: .finish)
         XCTAssertEqual(state.displayed(serverRole: .finish), .finish)
         XCTAssertTrue(state.begin(.start, serverRole: .finish))
     }
     func testSocketAcknowledgementBeforeRoleRequestReturns() {
         var state = RoleSelection()
         XCTAssertTrue(state.begin(.finish, serverRole: .start))
-        state.receivedServerState()
+        state.receivedServerState(serverRole: .finish)
         XCTAssertTrue(state.saving)
         state.succeeded(serverRole: .finish)
         XCTAssertNil(state.optimistic)
         XCTAssertFalse(state.saving)
+    }
+    func testSupersededRoleFailurePreservesLatestChoice() {
+        var state = RoleSelection()
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        XCTAssertFalse(state.begin(.start, serverRole: .start))
+        state.failed()
+        XCTAssertEqual(state.inFlight, .start)
+        XCTAssertEqual(state.displayed(serverRole: .finish), .start)
+        state.failed()
+        XCTAssertFalse(state.saving)
+        XCTAssertEqual(state.displayed(serverRole: .finish), .finish)
+    }
+    func testDelayedRoleBroadcastDoesNotUndoSuccessfulSelection() {
+        var state = RoleSelection()
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        state.succeeded(serverRole: .start)
+        state.receivedServerState(serverRole: .start)
+        XCTAssertEqual(state.displayed(serverRole: .start), .finish)
+        state.receivedServerState(serverRole: .finish)
+        XCTAssertNil(state.optimistic)
+        state.receivedServerState(serverRole: .start)
+        XCTAssertEqual(state.displayed(serverRole: .start), .start)
+    }
+    func testRapidRoleTapsCoalesceToFinalSelection() {
+        var state = RoleSelection()
+        XCTAssertTrue(state.begin(.finish, serverRole: .start))
+        XCTAssertFalse(state.begin(.start, serverRole: .start))
+        XCTAssertFalse(state.begin(.finish, serverRole: .start))
+        state.succeeded(serverRole: .finish)
+        XCTAssertFalse(state.saving)
+        XCTAssertNil(state.optimistic)
     }
     func testProductionGatewayIsBuiltIn() {
         XCTAssertEqual(AppConfiguration.serverURL.scheme, "https")

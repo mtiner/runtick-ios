@@ -105,6 +105,10 @@ import SwiftUI
     private(set) var roleSelection = RoleSelection()
     var serverRole: DeviceRole? { members.first { $0.loginId == user.loginId }?.deviceRole }
     var role: DeviceRole? { roleSelection.displayed(serverRole: serverRole) }
+    func displayedRole(for member: Member) -> DeviceRole? {
+        guard let selected = roleSelection.optimistic else { return member.deviceRole }
+        return member.loginId == user.loginId ? selected : (selected == .start ? .finish : .start)
+    }
     var roleSaving: Bool { roleSelection.saving }
     var raceRole: DeviceRole? { guard let race else { return nil }; return race.startUserId == user.id ? .start : race.finishUserId == user.id ? .finish : nil }
     var pendingKey: String { "pending:\(api.baseURL.absoluteString):\(user.id):\(code)" }
@@ -163,17 +167,18 @@ import SwiftUI
     func pick(_ target: DeviceRole) async {
         guard race?.active != true, connected, !busy, !stopped,
               roleSelection.begin(target, serverRole: serverRole) else { return }
-        // Updating this state before awaiting HTTP gives immediate visual feedback.
-        busy = true; error = ""
-        do {
-            let _: EmptyResponse = try await api.request("/api/rooms/\(code)/role", method: "POST", body: ["deviceRole": target.rawValue])
-            roleSelection.succeeded(serverRole: serverRole)
-        } catch {
-            roleSelection.failed()
-            if !(error is CancellationError) { self.error = error.localizedDescription }
+        error = ""
+        while let target = roleSelection.inFlight {
+            do {
+                let _: EmptyResponse = try await api.request("/api/rooms/\(code)/role", method: "POST", body: ["deviceRole": target.rawValue])
+                roleSelection.succeeded(serverRole: serverRole)
+            } catch {
+                roleSelection.failed()
+                // An obsolete request failure must not roll back or alert over a newer tap.
+                if !roleSelection.saving && !stopped && !(error is CancellationError) { self.error = error.localizedDescription }
+            }
+            if stopped { return }
         }
-        busy = false
-        // A socket sync failure must not roll back a successful HTTP role change.
         try? await socket?.send(.string("{\"type\":\"sync\"}"))
     }
     func raceAction(_ suffix: String = "") async {
@@ -184,8 +189,8 @@ import SwiftUI
         }
     }
     func beginRecording() async {
-        guard ready, connected, role != nil, clock?.fresh == true, !syncing else {
-            error = "请等待两端就绪并完成校时，再开始记录。"; return
+        guard ready, connected, role != nil, !roleSaving, clock?.fresh == true, !syncing else {
+            error = roleSaving ? "角色正在后台同步，请稍后开始记录。" : "请等待两端就绪并完成校时，再开始记录。"; return
         }
         await action {
             let settings = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
@@ -274,7 +279,7 @@ import SwiftUI
                     let data: Data
                     switch message { case .string(let text): data = Data(text.utf8); case .data(let bytes): data = bytes; @unknown default: continue }
                     guard let event = try? JSONDecoder().decode(HubState.self, from: data), event.type == "state" else { continue }
-                    connected = true; retry = 0; receivedRoomState = true; members = event.members ?? []; roleSelection.receivedServerState(); ready = event.ready ?? false
+                    connected = true; retry = 0; receivedRoomState = true; members = event.members ?? []; roleSelection.receivedServerState(serverRole: serverRole); ready = event.ready ?? false
                 }
             } catch { connected = false; ready = false }
             heartbeat.cancel(); ws.cancel(with: .goingAway, reason: nil)

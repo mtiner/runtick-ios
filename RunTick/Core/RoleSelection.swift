@@ -1,23 +1,31 @@
 import Foundation
 
-/// Optimistic selection is separate from authoritative room membership.
+/// Show the latest tap immediately; serialize writes so an older request cannot win.
 struct RoleSelection {
     private(set) var optimistic: DeviceRole?
-    private(set) var saving = false
+    private(set) var inFlight: DeviceRole?
+    var saving: Bool { inFlight != nil }
     func displayed(serverRole: DeviceRole?) -> DeviceRole? { optimistic ?? serverRole }
+
+    /// Returns true only when the caller needs to start draining the write queue.
     mutating func begin(_ target: DeviceRole, serverRole: DeviceRole?) -> Bool {
-        guard !saving, target != displayed(serverRole: serverRole) else { return false }
-        optimistic = target; saving = true
+        guard target != displayed(serverRole: serverRole) else { return false }
+        optimistic = target
+        guard inFlight == nil else { return false }
+        inFlight = target
         return true
     }
     mutating func succeeded(serverRole: DeviceRole?) {
-        saving = false
+        if optimistic != inFlight { inFlight = optimistic; return }
+        inFlight = nil
         if serverRole == optimistic { optimistic = nil }
     }
-    mutating func failed() { optimistic = nil; saving = false }
-    mutating func receivedServerState() {
-        // Preserve the local highlight while the request is in flight. Once the
-        // request completes, the next room state supersedes the optimistic value.
-        if !saving { optimistic = nil }
+    mutating func failed() {
+        if optimistic != inFlight { inFlight = optimistic; return }
+        optimistic = nil; inFlight = nil
+    }
+    mutating func receivedServerState(serverRole: DeviceRole?) {
+        // Ignore old broadcasts until they actually confirm the latest selection.
+        if !saving && serverRole == optimistic { optimistic = nil }
     }
 }
