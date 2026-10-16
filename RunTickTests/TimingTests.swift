@@ -7,7 +7,7 @@ import FoundationNetworking
 final class TimingTests: XCTestCase {
     func testSavedSessionSurvivesEncodingWithoutExtendingExpiry() throws {
         let server = URL(string: "https://app.runtick.cc/")!
-        let expiry = Date(timeIntervalSince1970: 2_000_000_000)
+        let expiry = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970) + 3600)
         let cookie = HTTPCookie(properties: [.name: "runtick_session", .value: "test-token", .domain: "app.runtick.cc", .path: "/", .secure: "TRUE", .expires: expiry])!
         let data = try JSONEncoder().encode(SavedSessionCookie(cookie))
         let restored = try JSONDecoder().decode(SavedSessionCookie.self, from: data)
