@@ -51,12 +51,21 @@ struct RTCard<Content: View>: View {
 }
 struct RTBrand: View {
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "waveform.path").font(.title3.weight(.bold)).foregroundStyle(RT.deep)
-            Text("RunTick").font(.system(size: 18, weight: .bold, design: .rounded))
-            Text("｜ 燃刻").font(.system(size: 15, weight: .medium)).foregroundStyle(RT.muted)
+        HStack(spacing: 9) {
+            RTWordmark().fill(RT.ink, style: FillStyle(eoFill: true)).frame(width: 100, height: 22)
+            Text("/").foregroundStyle(RT.muted.opacity(0.55))
+            RTWordmark(chinese: true).fill(RT.ink, style: FillStyle(eoFill: true)).frame(width: 52, height: 22)
             Spacer()
-        }.padding(.bottom, 4).accessibilityElement(children: .combine)
+        }.padding(.bottom, 4).accessibilityElement(children: .ignore).accessibilityLabel("RunTick 燃刻")
+    }
+}
+struct RTBrandFooter: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            RTWordmark().fill(RT.muted.opacity(0.45), style: FillStyle(eoFill: true)).frame(width: 73, height: 16)
+            Text("/").font(.footnote).foregroundStyle(RT.muted.opacity(0.3))
+            RTWordmark(chinese: true).fill(RT.muted.opacity(0.45), style: FillStyle(eoFill: true)).frame(width: 38, height: 16)
+        }.frame(maxWidth: .infinity).padding(.top, 22).accessibilityHidden(true)
     }
 }
 struct RTHero: View {

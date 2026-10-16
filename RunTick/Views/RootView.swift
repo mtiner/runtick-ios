@@ -108,6 +108,7 @@ struct RootView: View {
                 TextField("后端 HTTPS 根地址", text: $model.serverAddress).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().rtField()
             }.font(.footnote).foregroundStyle(RT.muted).padding(.horizontal, 4)
             Text("登录即可创建或加入计时房间").font(.footnote).foregroundStyle(RT.muted).frame(maxWidth: .infinity).padding(.top, 4)
+            RTBrandFooter()
         }
     }
     var lobby: some View {
@@ -159,6 +160,7 @@ struct GuideView: View {
             }.rtEntrance(0.12)
             Button("开始使用", action: proceed).buttonStyle(RTButtonStyle()).accessibilityIdentifier("guide.continue").rtEntrance(0.16)
             Text("请使用手机扬声器。计时估算误差不含人工反应。").font(.caption).foregroundStyle(RT.muted).frame(maxWidth: .infinity)
+            RTBrandFooter()
         }.onDisappear { audio.stop() }
     }
 }
