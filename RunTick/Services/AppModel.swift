@@ -89,6 +89,8 @@ import SwiftUI
     var members: [Member] = []; var connected = false; var ready = false
     var race: Race?; var clock: ClockMapping?; var syncing = false; var progress = 0
     var error = ""; var busy = false; var firing = false; var cue = ""; var pressed = false
+    var cueDeadline: Double?
+    private var attemptedAutoStart: String?
     var pending: PendingEvent?; var submitting = false
     var stages: [StageDelay] { didSet { if stages.count == 3 && stages.allSatisfy(\.valid) { UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter") } } }
     private var tasks: [Task<Void, Never>] = []
@@ -136,7 +138,7 @@ import SwiftUI
         if !value.active { interrupt() }
     }
     func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
-    func interrupt() { pressed = false; eventClock = nil; audio.stop(); firing = false; cue = "" }
+    func interrupt() { pressed = false; eventClock = nil; audio.stop(); firing = false; cue = ""; cueDeadline = nil }
     func resume() { if race?.active == true && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
@@ -180,11 +182,34 @@ import SwiftUI
             if let race = result.race { update(race) }
         }
     }
+    func beginRecording() async {
+        guard ready, connected, role != nil, clock?.fresh == true, !syncing else {
+            error = "请等待两端就绪并完成校时，再开始记录。"; return
+        }
+        await action {
+            let settings = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
+            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races", method: "POST", body: ["starterSettings": settings])
+            if let race = result.race {
+                guard race.starterSettings != nil else { throw ClientError.message("服务器尚未支持双端开始记录，请更新 API 服务后重试。") }
+                update(race)
+            }
+        }
+    }
+    func autoFire() async {
+        guard let race, raceRole == .start, race.active, race.startAt == nil,
+              attemptedAutoStart != race.id, let settings = race.starterSettings,
+              settings.count == 3, settings.allSatisfy(\.valid) else { return }
+        if clock?.fresh != true { await calibrate() }
+        guard clock?.fresh == true, !Task.isCancelled else { return }
+        attemptedAutoStart = race.id
+        stages = settings
+        await fire()
+    }
     func fire() async {
         guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); error = "校时已更新，请再次发令" }; return }
         firing = true; let snapshot = clock
-        defer { firing = false }
-        do { try await audio.play(settings: stages, cue: { self.cue = $0 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra) }) }
+        defer { firing = false; cueDeadline = nil }
+        do { try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra) }) }
         catch is CancellationError {} catch { self.error = error.localizedDescription; audio.stop() }
     }
     func press() {

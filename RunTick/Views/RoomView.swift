@@ -7,15 +7,16 @@ struct RoomView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var roleHighlight
     @State private var soundCheck = false
+    @State private var recording = false
     @State private var distance = "100"
-    var finishVisible: Bool { model.raceRole == .finish && model.race?.active == true && model.race?.finishAt == nil && model.clock != nil && model.pending == nil }
+    var recordingVisible: Bool { model.race?.active == true && (model.raceRole == .start || (model.raceRole == .finish && model.race?.finishAt == nil && model.pending == nil)) }
     var body: some View {
         RTPage {
             RTBrand(onExit: leave, exiting: model.busy).rtEntrance()
             RTHero(badge: "房间 \(model.code)", title: model.race?.status == "completed" ? "本次成绩" : model.race?.active == true ? (model.raceRole == .start ? "起跑发令" : "终点记录") : "房间准备", subtitle: "准备好，就出发。").rtEntrance(0.04)
             if model.race?.active != true {
             RTCard("房间 \(model.code)") {
-                Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "wifi" : "wifi.slash")
+                Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "network" : "network.slash")
                 if model.syncing { ProgressView("HTTP 校时 \(model.progress)/20", value: Double(model.progress), total: 20) }
                 else if let clock = model.clock { Text("20 次校时 · 平均 RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.uncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
                 Button("重新校准时间") { Task { await model.calibrate() } }.disabled(model.syncing || model.firing || model.pressed)
@@ -45,26 +46,44 @@ struct RoomView: View {
                 RTCard("房间成员（\(model.members.count)/2）") { ForEach(model.members) { member in HStack { Text(member.loginId); Spacer(); Text("\(member.deviceRole?.title ?? "同步中") · \(member.online == true ? "在线" : "离线")").foregroundStyle(.secondary) } } }
             }
             if let race = model.race { raceRTCard(race).id(race.id).rtEntrance(0.08) }
-            if model.role == .start && model.race?.active != true && model.race?.status != "completed" {
-                Button("开始记录") { soundCheck = true }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock == nil || model.syncing || model.busy)
+            if model.role != nil && model.race?.active != true && model.race?.status != "completed" {
+                Button("开始记录") { soundCheck = true }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock?.fresh != true || model.syncing || model.busy)
             }
             if let pending = model.pending { RTCard("待提交时间戳") { Text("轮次 \(pending.raceId) · \(pending.event.kind.title)\n原始时间戳已保留，联网后自动重试"); Button("重试提交") { Task { await model.submit() } }.disabled(model.submitting) } }
             NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code) }
             Button("退出房间", systemImage: "rectangle.portrait.and.arrow.right", action: leave)
         }
-        .rtErrorAlert($model.error, enabled: !finishVisible && !soundCheck)
+        .rtErrorAlert($model.error, enabled: !recording && !soundCheck)
         .navigationBarBackButtonHidden()
-        .sheet(isPresented: $soundCheck) {
-            NavigationStack { RTPage {
-                RTCard("开始前确认声音") { Text("调高音量，使用手机扬声器；确认终点已进入触控区后再发令。")
-                    AudioPreparationCard()
-                    Button("已确认声音，开始记录") { soundCheck = false; Task { await model.raceAction() } }
-                }
-                Button("返回准备") { soundCheck = false }
-            }.navigationTitle("声音准备") }.presentationDetents([.medium])
+        .onAppear { recording = recordingVisible }
+        .onChange(of: recordingVisible) { _, visible in
+            if visible && soundCheck { soundCheck = false }
+            else { recording = visible }
         }
-        .fullScreenCover(isPresented: Binding(get: { finishVisible }, set: { _ in })) {
-            FinishPad(model: model, leave: leave).interactiveDismissDisabled()
+        .sheet(isPresented: $soundCheck, onDismiss: { recording = recordingVisible }) {
+            NavigationStack {
+                RTPage {
+                    RTHero(badge: "房间 \(model.code)", title: "发令设置", subtitle: "确认后，双端同时进入记录页面。")
+                    RTCard("发令时间") {
+                        ForEach(0..<3, id: \.self) { i in
+                            StageDelayControl(title: ["开始 → 各就位", "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
+                        }
+                    }.disabled(model.busy)
+                    if model.role == .start { AudioPreparationCard() }
+                    else { Text("请确认起点手机的媒体音量已调至最大，并使用扬声器播放发令声音。").font(.footnote).foregroundStyle(RT.muted) }
+                    Button(model.busy ? "正在开始…" : "确认并开始记录") {
+                        Task { await model.beginRecording() }
+                    }.buttonStyle(RTButtonStyle()).disabled(model.busy || !model.stages.allSatisfy(\.valid))
+                    Button("返回准备") { soundCheck = false }.disabled(model.busy)
+                }.navigationTitle("开始记录").navigationBarTitleDisplayMode(.inline)
+                    .rtErrorAlert($model.error)
+            }.presentationDetents([.large]).interactiveDismissDisabled(model.busy)
+        }
+        .fullScreenCover(isPresented: $recording) {
+            Group {
+                if model.raceRole == .start { StarterPad(model: model, leave: leave) }
+                else { FinishPad(model: model, leave: leave) }
+            }.interactiveDismissDisabled()
         }
     }
     private func resultNumber(_ race: Race, size: CGFloat) -> some View {
@@ -103,12 +122,12 @@ struct RoomView: View {
                 }
                 if model.raceRole == .start {
                     Text(model.cue.isEmpty ? "等待发令" : model.cue).font(.title2)
-                    ForEach(0..<3, id: \.self) { i in
-                        StageDelayControl(title: ["点击 → 各就位", "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
-                            .disabled(model.firing || race.startAt != nil || model.pending != nil)
-                    }
-                    Button("开始发令") { Task { await model.fire() } }.buttonStyle(RTButtonStyle()).disabled(model.clock == nil || model.syncing || model.firing || race.startAt != nil || model.pending != nil || !model.stages.allSatisfy(\.valid))
-                } else { Text(race.finishAt == nil ? "校时完成后进入终点触控区" : "终点时间已保存，等待枪声时间戳") }
+                    Text("发令设置已确认，正在全屏记录。")
+                    Button("进入记录页") { recording = true }.buttonStyle(RTButtonStyle())
+                } else {
+                    Text(race.finishAt == nil ? "按住屏幕，冲线时松手" : "终点时间已保存，等待枪声时间戳")
+                    if recordingVisible { Button("进入记录页") { recording = true }.buttonStyle(RTButtonStyle()) }
+                }
             } else if race.status == "invalid" { Text("终点早于枪声或用时超过一小时，本轮无效，请重新开始。") }
         }
     }

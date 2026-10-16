@@ -5,6 +5,19 @@ import FoundationNetworking
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testRecordingSettingsTravelWithRaceAndLegacyRacesStillDecode() throws {
+        let legacy = #"{"id":"round","status":"ready","createdAt":123,"startUserId":1,"finishUserId":2}"#
+        let decoder = JSONDecoder()
+        let old = try decoder.decode(Race.self, from: Data(legacy.utf8))
+        XCTAssertNil(old.starterSettings)
+        var planned = old
+        planned.starterSettings = [StageDelay(random: false, min: 7, max: 7), StageDelay(random: true, min: 8, max: 12), StageDelay(random: true, min: 5, max: 30)]
+        let restored = try decoder.decode(Race.self, from: JSONEncoder().encode(planned))
+        XCTAssertEqual(restored.starterSettings, planned.starterSettings)
+        XCTAssertEqual(restored.startUserId, 1)
+        XCTAssertEqual(restored.finishUserId, 2)
+    }
+
     func testSavedSessionSurvivesEncodingWithoutExtendingExpiry() throws {
         let server = URL(string: "https://app.runtick.cc/")!
         let expiry = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970) + 3600)

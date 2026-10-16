@@ -15,6 +15,7 @@ struct Race: Codable, Identifiable {
     let id: String; let status: String; let createdAt: Double
     let startAt: Double?; let finishAt: Double?; let elapsedMs: Double?; let uncertaintyMs: Double?
     let startUserId: Int; let finishUserId: Int; var savedResult: SavedResult?
+    var starterSettings: [StageDelay]? = nil
     var active: Bool { status == "ready" || status == "running" }
     func accepts(_ newer: Race) -> Bool {
         guard newer.createdAt >= createdAt else { return false }

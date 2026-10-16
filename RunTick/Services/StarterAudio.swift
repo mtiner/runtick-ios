@@ -6,7 +6,7 @@ import AVFoundation
     private var nodes: [AVAudioPlayerNode] = []
     private var generation = UUID()
     func stop() { generation = UUID(); nodes.forEach { $0.stop() }; engine.stop(); nodes.forEach { engine.detach($0) }; nodes.removeAll() }
-    func play(settings: [StageDelay], cue: @escaping (String) -> Void, gun: @escaping (Double, Double) -> Void) async throws {
+    func play(settings: [StageDelay], cue: @escaping (String, Double?) -> Void, gun: @escaping (Double, Double) -> Void) async throws {
         stop()
         guard settings.count == 3, settings.allSatisfy(\.valid) else { throw ClientError.message("等待时间须为 5–30 秒，随机上限不得小于下限") }
         let token = generation, clicked = MonotonicClock.now()
@@ -35,12 +35,12 @@ import AVFoundation
             let host = hostAnchor + AVAudioTime.hostTime(forSeconds: (at - localAnchor) / 1000)
             nodes[i].play(at: AVAudioTime(hostTime: host))
         }
-        cue("等待各就位…")
+        cue("等待各就位", times[0])
         for i in 0..<3 {
             let remaining = times[i] - MonotonicClock.now()
             if remaining > 0 { try await Task.sleep(for: .milliseconds(remaining)) }
             guard generation == token, engine.isRunning else { throw CancellationError() }
-            cue(["各就位", "预备", "砰！"][i])
+            cue(["各就位", "预备", "砰！"][i], i < 2 ? times[i+1] : nil)
             if i == 2 { gun(times[i] + (session.outputLatency + session.ioBufferDuration) * 1000, 20) }
         }
     }
