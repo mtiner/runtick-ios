@@ -22,11 +22,6 @@ targets:
     platform: iOS
     sources:
       - path: RunTick
-        excludes: [Resources]
-    resources:
-      - path: RunTick/Resources/Audio
-        type: group
-      - path: RunTick/Resources/Brand.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mtiner.runtick
