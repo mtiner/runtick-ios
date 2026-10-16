@@ -70,7 +70,7 @@ final class TimingTests: XCTestCase {
         XCTAssertEqual(StageDelay(random: false, min: 5, max: 10).sample(), 5)
     }
     func testLegacyDelaySettingsMigrateToSliderBounds() {
-        XCTAssertEqual(StageDelay(random: true, min: 1, max: 2).normalized, StageDelay(random: true, min: 5, max: 5))
+        XCTAssertEqual(StageDelay(random: true, min: 1, max: 2).normalized, StageDelay(random: true, min: 5, max: 10))
         XCTAssertEqual(StageDelay(random: true, min: 40, max: 0).normalized, StageDelay(random: true, min: 30, max: 30))
         XCTAssertFalse(StageDelay(random: false, min: 4, max: 5).valid)
     }

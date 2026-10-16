@@ -44,7 +44,8 @@ struct StageDelay: Codable, Equatable {
     func sample() -> Double { random ? Double.random(in: min...max) : min }
     var normalized: Self {
         let lower = min.isFinite ? Swift.min(30, Swift.max(5, min.rounded())) : 5
-        let upper = max.isFinite ? Swift.min(30, Swift.max(lower, max.rounded())) : lower
+        var upper = max.isFinite ? Swift.min(30, Swift.max(lower, max.rounded())) : lower
+        if random && max < 5 && lower < 30 { upper = Swift.min(30, lower + 5) }
         return Self(random: random, min: lower, max: upper)
     }
     mutating func setLower(_ value: Double) { min = Swift.min(max, Swift.max(5, value.rounded())) }
