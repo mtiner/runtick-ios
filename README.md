@@ -11,7 +11,7 @@ xcodegen generate
 open RunTick.xcodeproj
 ```
 
-选择 RunTick scheme 和 iPhone/iPad，在 Signing & Capabilities 中选择自己的 Team；Bundle ID 可自行调整。无需第三方 Swift 包。客户端内置生产网关 `https://app.runtick.cc/`，无需填写服务器地址。账号与网页端共用，首次 ID 登录自动注册。
+必须打开 `RunTick.xcodeproj` 并选择 RunTick scheme 和 iPhone/iPad。直接打开仓库文件夹会进入 Swift 包 RunTickLogic，不能归档。签名 Team 在本机选择；Bundle ID 固定为 `cc.runtick.app`，与已上传的 TestFlight 包一致，不要改。无需第三方 Swift 包。客户端内置生产网关 `https://app.runtick.cc/`，无需填写服务器地址。账号与网页端共用，首次 ID 登录自动注册。
 
 `project.yml` 是工程配置源，修改后重新生成。仓库同时包含可直接打开的 `.xcodeproj`。调试后端必须提供可被手机访问且证书有效的 HTTPS 地址，应用不放开 ATS。
 
@@ -40,6 +40,6 @@ xcodebuild -project RunTick.xcodeproj -scheme RunTick \
 
 GitHub Actions 会检查 SDK 版本，再编译并运行 XCTest。若 GitHub 托管机器尚无 iOS 26 SDK，任务会明确失败；需改用安装相应 Xcode 的 runner。最低部署版本与构建 SDK 分开管理：可用更高版本 SDK 构建，但兼容性测试仍需 iOS 26 模拟器。
 
-本次迁移在 Linux 编写，无法执行 Apple SDK 类型检查、模拟器和签名打包。Linux 的 Swift 校验不代替 iOS 构建，尚需按 MIGRATION 中的双机清单验收。
+本次迁移在 Linux 编写，当时无法执行 Apple SDK 类型检查、模拟器和签名打包。现已用 Xcode 归档并上传 TestFlight（1.0 build 1，`cc.runtick.app`）。Linux 的 `swift test` 不代替 iOS 构建。真机双人计时验收不在这次上传范围内。
 
 平台无关核心逻辑也可用 Swift 6 执行 `swift test`；当前 11 个用例已通过。它只编译 Core 与测试，不构建 iOS 界面或音频服务。
