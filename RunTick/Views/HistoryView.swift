@@ -54,7 +54,7 @@ struct HistoryView: View {
         .onChange(of: sort) { _, _ in offset = 0 }
         .refreshable { await load() }
     }
-    private func resultText(_ record: HistoryRecord) -> some View { Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).font(.title3.bold()).monospacedDigit().fixedSize(horizontal: true, vertical: false) }
+    private func resultText(_ record: HistoryRecord) -> some View { Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).font(.title3.bold()).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5) }
     func date(_ value: Double) -> String { Date(timeIntervalSince1970: value / 1000).formatted(date: .abbreviated, time: .shortened) }
     func load() async {
         loading = true; error = ""

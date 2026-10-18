@@ -31,4 +31,17 @@ final class RecordingNavigationTests: XCTestCase {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "ipad-landscape-recording"; attachment.lifetime = .keepAlways; add(attachment)
     }
 
+    @MainActor func testLargeTextStillAllowsReturnAndResume() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--starter-preview", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let back = app.buttons["recording.return"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10)); XCTAssertTrue(back.isHittable)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "large-text-starter"; attachment.lifetime = .keepAlways; add(attachment)
+        back.tap()
+        let resume = app.buttons["room.resumeRecording"]
+        if !resume.isHittable { app.swipeUp() }
+        XCTAssertTrue(resume.exists)
+    }
+
 }
