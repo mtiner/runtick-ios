@@ -86,7 +86,7 @@ struct RootView: View {
             NavigationLink("关于 RunTick") { AboutView() }
             Button { Task { await model.perform { await model.logout() } } } label: { Label("退出登录", systemImage: "power") }
                 .disabled(model.loading).rtEntrance(0.16)
-        }
+        }.task { model.scheduleSync() }
     }
     var loginView: some View {
         RTPage {

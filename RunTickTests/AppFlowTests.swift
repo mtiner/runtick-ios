@@ -127,6 +127,18 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(UserDefaults.standard.data(forKey: model.pendingKey + ":old-round"), bytes)
         model.stop(); clearRecords()
     }
+    func testCancelledRoundKeepsItsUnsentDataOutsideTheCurrentSlot() throws {
+        clearRecords()
+        let client = api { _ in (200, "{\"ok\":true,\"data\":{}}") }
+        let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
+        let old = PendingEvent(code: "1234", raceId: "cancelled-round", userId: 71, event: TimingEvent(kind: .start, at: 1000, uncertaintyMs: 2))
+        let bytes = try JSONEncoder().encode(old); model.pending = old
+        UserDefaults.standard.set(bytes, forKey: model.pendingKey)
+        model.update(Race(id: "cancelled-round", status: "cancelled", createdAt: 20, startAt: nil, finishAt: nil, elapsedMs: nil, uncertaintyMs: nil, startUserId: 71, finishUserId: 72, savedResult: nil))
+        XCTAssertNil(model.pending)
+        XCTAssertEqual(UserDefaults.standard.data(forKey: model.pendingKey + ":cancelled-round"), bytes)
+        model.stop(); clearRecords()
+    }
     func testTouchTimestampUsesEventClockRatherThanCallbackDelivery() {
         XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.001)
     }

@@ -181,7 +181,7 @@ import SwiftUI
         var value = value
         if race?.id == value.id && value.reactionStatus == nil { value.reactionStatus = race?.reactionStatus; value.reactionMs = race?.reactionMs }
         if let race, !race.accepts(value) { return }
-        if let pending, pending.raceId != value.id { archivePendingFromPreviousRound() }
+        if let pending, pending.raceId != value.id || !value.active { archivePendingFromPreviousRound() }
         if race?.id != value.id { recordingClock = value.active && clock?.fresh == true ? clock : nil }
         if value.active && recordingClock == nil && clock?.fresh == true { recordingClock = clock }
         race = value
