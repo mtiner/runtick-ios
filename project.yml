@@ -48,6 +48,12 @@ targets:
     sources: [RunTickTests]
     dependencies:
       - target: RunTick
+  RunTickUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [RunTickUITests]
+    dependencies:
+      - target: RunTick
 schemes:
   RunTick:
     build:
@@ -55,4 +61,4 @@ schemes:
         RunTick: all
         RunTickTests: [test]
     test:
-      targets: [RunTickTests]
+      targets: [RunTickTests, RunTickUITests]

@@ -72,7 +72,8 @@ struct ClockMapping {
 }
 enum MonotonicClock {
     static let epoch = Date().timeIntervalSince1970 * 1000 - ProcessInfo.processInfo.systemUptime * 1000
-    static func now() -> Double { epoch + ProcessInfo.processInfo.systemUptime * 1000 }
+    static func now() -> Double { fromUptime(ProcessInfo.processInfo.systemUptime) }
+    static func fromUptime(_ seconds: Double) -> Double { epoch + seconds * 1000 }
 }
 
 struct CurrentRoomResponse: Decodable { let room: Room? }

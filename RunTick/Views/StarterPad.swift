@@ -6,13 +6,15 @@ struct StarterPad: View {
     var body: some View {
         ZStack {
             RTBackdrop()
-            VStack(spacing: 28) {
+            GeometryReader { geometry in
+            ScrollView {
+            VStack(spacing: 22) {
                 HStack { Text("\(model.user.loginId) · 房间 \(model.code)"); Spacer() }
                 Spacer()
                 TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                     VStack(spacing: 22) {
                         Text(model.cue.isEmpty ? (model.race?.startAt == nil ? "准备发令" : "计时中") : model.cue)
-                            .font(.system(size: 48, weight: .bold)).multilineTextAlignment(.center)
+                            .font(.system(size: 48, weight: .bold)).multilineTextAlignment(.center).minimumScaleFactor(0.6)
                             .contentTransition(.opacity)
                         if let deadline = model.cueDeadline {
                             Text("\(max(0, Int(ceil((deadline - MonotonicClock.now()) / 1000))))")
@@ -32,11 +34,13 @@ struct StarterPad: View {
                         .buttonStyle(RTButtonStyle()).disabled(model.syncing)
                 }
                 Spacer()
-                Text("保持 App 在前台，使用扬声器播放")
+                Text("保持 App 在前台，使用本机扬声器播放")
                     .font(.footnote).foregroundStyle(RT.muted)
-            }.padding(28).frame(maxWidth: 650)
+            }.padding(.horizontal, 28).padding(.top, 76).padding(.bottom, 28).frame(maxWidth: 650).frame(maxWidth: .infinity).frame(minHeight: geometry.size.height)
+            }
+            }
             VStack {
-                HStack { Spacer(); Button("返回房间", action: leave).buttonStyle(.glass) }
+                HStack { Spacer(); Button("返回房间", action: leave).buttonStyle(.glass).accessibilityIdentifier("recording.return") }
                 Spacer()
             }.padding()
         }.foregroundStyle(RT.ink)
@@ -53,6 +57,7 @@ struct StarterPad: View {
             } message: {
                 Text("建议将媒体音量调至最大，以便清楚听到口令和枪声。也可以按当前音量继续发令，包括音量为零时。")
             }
+            .onDisappear { model.interrupt() }
             .rtErrorAlert($model.error, enabled: !model.volumeConfirmationPending)
     }
 }

@@ -18,7 +18,7 @@ import Foundation
             guard let self, let motion else { return }
             self.received = true
             let a = motion.userAcceleration, r = motion.rotationRate
-            let at = MonotonicClock.now() + (motion.timestamp - ProcessInfo.processInfo.systemUptime) * 1000
+            let at = MonotonicClock.fromUptime(motion.timestamp)
             self.gate.sample(at: at, acceleration: sqrt(a.x*a.x+a.y*a.y+a.z*a.z)*9.80665, rotation: sqrt(r.x*r.x+r.y*r.y+r.z*r.z))
             self.report()
         }

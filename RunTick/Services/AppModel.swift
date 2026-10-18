@@ -7,20 +7,30 @@ import SwiftUI
     var lobbyReady = false
     var error = ""
     var room: RoomModel?
+    var syncNotice = ""
+    private var syncTask: Task<Void, Never>?
+    private var resolvingRoom = false
+    private let injectedClient: Bool
+    init(api: APIClient? = nil) { self.api = api; injectedClient = api != nil }
     let serverAddress = AppConfiguration.serverURL.absoluteString
-    func configure() throws {
-        api = APIClient(baseURL: AppConfiguration.serverURL)
+    func configure(reset: Bool = false) throws {
+        if api == nil || (reset && !injectedClient) { api = APIClient(baseURL: AppConfiguration.serverURL) }
         user = api?.savedUser
-        api?.unauthorized = { [weak self] in self?.clearSession() }
+        if let client = api {
+            client.unauthorized = { [weak self, weak client] in
+                guard let self, let client, self.api === client else { return }
+                self.clearSession()
+            }
+        }
     }
-    func clearSession() { room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
+    func clearSession() { syncTask?.cancel(); syncTask = nil; syncNotice = ""; room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
     func restore() async {
         guard !serverAddress.isEmpty else { return }
         await perform {
             try self.configure()
             do {
                 let result: UserResponse = try await self.api!.request("/api/auth/me")
-                self.user = result.user; try self.api!.remember(result.user); try await self.leave()
+                self.user = result.user; try self.api!.remember(result.user); try await self.openCurrentRoom(); self.scheduleSync()
             } catch let error as ClientError where error.status == 401 {
                 // No saved session on a fresh install is expected, not a connection failure.
                 return
@@ -34,13 +44,13 @@ import SwiftUI
     }
     func login(id: String, password: String) async throws {
         guard !id.trimmingCharacters(in: .whitespaces).isEmpty, !password.isEmpty else { throw ClientError.message("请输入用户 ID 和密码") }
-        try configure()
+        try configure(reset: true)
         let result: UserResponse = try await api!.request("/api/auth/login", method: "POST", body: ["userId": id, "password": password])
-        user = result.user; try api!.remember(result.user); try await leave()
+        user = result.user; try api!.remember(result.user); try await openCurrentRoom(); scheduleSync()
     }
     func enter(code: String? = nil) async throws {
         guard let api, let user else { return }
-        guard lobbyReady else { throw ClientError.message("请先重试退出旧房间，补交待发送事件") }
+        guard lobbyReady else { throw ClientError.message("暂时无法确认房间状态，请重试恢复房间。") }
         if let code, code.count != 4 || !code.allSatisfy(\.isNumber) { throw ClientError.message("房间号必须为 4 位数字") }
         let path = code.map { "/api/rooms/\($0)/join" } ?? "/api/rooms"
         let response: RoomResponse = try await api.request(path, method: "POST")
@@ -50,18 +60,31 @@ import SwiftUI
     /// Match the H5 room tab: resolve membership without leaving a live room.
     func openCurrentRoom() async throws {
         guard let api, let user else { return }
+        guard !resolvingRoom else { return }
+        resolvingRoom = true
+        defer { resolvingRoom = false }
         let result: CurrentRoomResponse = try await api.request("/api/rooms/current")
         try Task.checkCancellation()
+        guard self.user?.id == user.id, self.api === api else { throw CancellationError() }
         if let current = result.room {
             guard room?.code != current.code else { room?.resume(); return }
             room?.stop()
             let model = RoomModel(code: current.code, user: user, api: api)
             room = model; lobbyReady = false; model.start()
         } else {
-            try await leave()
+            room?.stop(); room = nil; lobbyReady = true
         }
     }
-    func replayPending() async throws {
+    var syncingRecords: Bool { syncTask != nil }
+    func scheduleSync(showConfirmation: Bool = false) {
+        guard syncTask == nil else { return }
+        syncTask = Task {
+            await replayPending()
+            if showConfirmation && syncNotice.isEmpty && user != nil { syncNotice = "本机训练记录已同步。" }
+            syncTask = nil
+        }
+    }
+    func replayPending() async {
         guard let api, let user else { return }
         await TrainingSync.retry(api: api, userId: user.id)
         let prefix = "pending:\(api.baseURL.absoluteString):\(user.id):"
@@ -69,15 +92,22 @@ import SwiftUI
         for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix(prefix) || key.hasPrefix(legacyPrefix) {
             guard let bytes = value as? Data, let pending = try? JSONDecoder().decode(PendingEvent.self, from: bytes), pending.userId == user.id else { continue }
             let event = pending.event
-            let _: RaceResponse = try await api.request("/api/rooms/\(pending.code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
-            UserDefaults.standard.removeObject(forKey: key)
+            guard !Task.isCancelled, self.user?.id == user.id else { return }
+            do {
+                let _: RaceResponse = try await api.request("/api/rooms/\(pending.code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
+                UserDefaults.standard.removeObject(forKey: key)
+                if room?.pending?.raceId == pending.raceId { room?.pending = nil }
+            } catch is CancellationError { return }
+            catch { if ((error as? ClientError)?.status ?? 0) == 0 || ((error as? ClientError)?.status ?? 0) >= 500 { break } }
         }
+        guard self.user?.id == user.id else { return }
+        let remaining = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.hasPrefix(prefix) || $0.hasPrefix(legacyPrefix) || $0.hasPrefix(TrainingSync.prefix(api, user.id)) }.count
+        syncNotice = remaining == 0 ? "" : "有 \(remaining) 条训练记录尚未同步，已保留在此设备上。请联网后重试。"
     }
     func leave() async throws {
         guard let api else { return }
-        try await replayPending()
         let _: EmptyResponse = try await api.request("/api/rooms/leave", method: "POST")
-        room?.stop(); room = nil; lobbyReady = true
+        room?.stop(); room = nil; lobbyReady = true; scheduleSync()
     }
     func logout() async {
         do { let _: EmptyResponse? = try await api?.request("/api/auth/logout", method: "POST") } catch { self.error = error.localizedDescription }
@@ -93,6 +123,9 @@ import SwiftUI
     var volumeConfirmationPending = false
     var cueDeadline: Double?
     private var attemptedAutoStart: String?
+    private var recordingClock: ClockMapping?
+    private var fireGeneration = UUID()
+    private var started = false
     var pending: PendingEvent?; var submitting = false
     var stages: [StageDelay] { didSet { if stages.count == 3 && stages.allSatisfy(\.valid) { UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter") } } }
     private var tasks: [Task<Void, Never>] = []
@@ -121,6 +154,7 @@ import SwiftUI
         pending = UserDefaults.standard.data(forKey: pendingKey).flatMap { try? JSONDecoder().decode(PendingEvent.self, from: $0) }
     }
     func start() {
+        guard !started, !stopped else { return }; started = true
         tasks.append(Task { await calibrate() })
         tasks.append(Task {
             do { let detail: RoomDetail = try await api.request("/api/rooms/\(code)"); if !receivedRoomState { members = detail.members } } catch { self.error = error.localizedDescription }
@@ -143,12 +177,14 @@ import SwiftUI
         var value = value
         if race?.id == value.id && value.reactionStatus == nil { value.reactionStatus = race?.reactionStatus; value.reactionMs = race?.reactionMs }
         if let race, !race.accepts(value) { return }
+        if race?.id != value.id { recordingClock = value.active && clock?.fresh == true ? clock : nil }
+        if value.active && recordingClock == nil && clock?.fresh == true { recordingClock = clock }
         race = value
-        if !value.active { interrupt() }
+        if !value.active { recordingClock = nil; interrupt() }
     }
     func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
-    func interrupt() { pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
-    func resume() { if race?.active == true && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
+    func interrupt() { fireGeneration = UUID(); pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
+    func resume() { if (race?.active != true || recordingClock == nil) && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
@@ -166,6 +202,7 @@ import SwiftUI
                 samples.append(ClockSample(sent: sent, received: received, serverReceived: response.receivedAt, serverSent: response.sentAt)); progress = i + 1
             }
             clock = try ClockMapping.average(samples)
+            if race?.active == true && recordingClock == nil { recordingClock = clock }
         } catch { if clock?.fresh != true { clock = nil }; if !(error is CancellationError) { self.error = error.localizedDescription } }
     }
     func pick(_ target: DeviceRole) async {
@@ -187,6 +224,7 @@ import SwiftUI
     }
     func raceAction(_ suffix: String = "") async {
         await action {
+            guard suffix.isEmpty || race != nil else { throw ClientError.message("当前没有可继续的训练，请返回房间重试。") }
             let path = "/api/rooms/\(code)/races" + (suffix.isEmpty ? "" : "/\(race!.id)/\(suffix)")
             let result: RaceResponse = try await api.request(path, method: "POST")
             if let race = result.race { update(race) }
@@ -200,7 +238,7 @@ import SwiftUI
             let settings = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
             let result: RaceResponse = try await api.request("/api/rooms/\(code)/races", method: "POST", body: ["starterSettings": settings])
             if let race = result.race {
-                guard race.starterSettings != nil else { throw ClientError.message("服务器尚未支持双端开始记录，请更新 API 服务后重试。") }
+                guard race.starterSettings != nil else { throw ClientError.message("发令设置暂时未能同步，请返回房间重试。") }
                 update(race)
             }
         }
@@ -218,7 +256,9 @@ import SwiftUI
     func fire(allowReducedVolume: Bool = false) async {
         guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); error = "校时已更新，请再次发令" }; return }
         firing = true; let snapshot = clock
-        defer { firing = false; cueDeadline = nil }
+        let token = UUID(); fireGeneration = token
+        let raceId = race!.id
+        defer { if fireGeneration == token { firing = false; cueDeadline = nil } }
         do {
             // Both local and remote starts ask on the phone that actually plays the cues.
             if !allowReducedVolume {
@@ -230,10 +270,12 @@ import SwiftUI
             cue = "请保持手机与起跑器稳定…"
             try await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
             try Task.checkCancellation()
-            try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in self.capture(.start, at: at, clock: snapshot, extra: extra)
+            try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in
+                guard self.fireGeneration == token, self.race?.id == raceId else { return }
+                self.capture(.start, at: at, clock: snapshot, extra: extra)
                 guard let raceId = self.race?.id else { return }
                 self.reactionMotion.gun(at: at) { result in
-                    self.race?.reactionMs = result.reactionMs; self.race?.reactionStatus = result.reactionStatus
+                    if self.race?.id == raceId { self.race?.reactionMs = result.reactionMs; self.race?.reactionStatus = result.reactionStatus }
                     Task {
                         do { try await TrainingSync.send(api: self.api, userId: self.user.id, path: "/api/rooms/\(self.code)/races/\(raceId)/reaction", body: ["reactionMs": result.reactionMs as Any? ?? NSNull(), "reactionStatus": result.reactionStatus], id: raceId) }
                         catch { self.error = "反应时已保留，联网后补交：" + error.localizedDescription }
@@ -241,11 +283,18 @@ import SwiftUI
                 }
             })
         }
-        catch is CancellationError {} catch { self.error = error.localizedDescription; audio.stop() }
+        catch {
+            if fireGeneration == token {
+                audio.stop(); reactionMotion.end()
+                if !(error is CancellationError) { self.error = "发令未完成，请检查声音输出后重试。" }
+            }
+        }
     }
+    var hasRecordingClock: Bool { recordingClock != nil || clock?.fresh == true }
     func press() {
-        if clock?.fresh == false { error = "校时已过期，请先重新校时，再按住屏幕。"; return }
-        guard let clock, clock.fresh, !syncing, pending == nil, race?.active == true, race?.finishAt == nil, raceRole == .finish else { return }
+        let snapshot = recordingClock ?? (clock?.fresh == true ? clock : nil)
+        guard let clock = snapshot else { error = "请先完成时间校准，再开始计时。"; return }
+        guard !syncing, pending == nil, race?.active == true, race?.finishAt == nil, raceRole == .finish else { return }
         eventClock = clock; pressed = true
     }
     func release(at: Double) {
@@ -267,8 +316,9 @@ import SwiftUI
             let result: RaceResponse = try await api.request("/api/rooms/\(code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
             self.pending = nil; UserDefaults.standard.removeObject(forKey: pendingKey)
             if let race = result.race { update(race) }
-        } catch {
-            self.error = error.localizedDescription + "；原始时间戳已保留"
+        } catch is CancellationError { return }
+        catch {
+            self.error = "计时记录暂未同步，已保留在此设备上。请联网后重试。"
             let status = (error as? ClientError)?.status ?? 0
             autoRetry = status == 0 || status >= 500
             retryAfter = ProcessInfo.processInfo.systemUptime + 3
@@ -278,7 +328,7 @@ import SwiftUI
         guard (1...100000).contains(distance), let race else { error = "请输入 1–100000 米的整数距离"; return }
         await action {
             let result: SaveResponse = try await api.request("/api/rooms/\(code)/races/\(race.id)/result", method: "POST", body: ["distance": distance])
-            var value = self.race ?? race
+            guard var value = self.race, value.id == race.id else { return }
             value.savedResult = SavedResult(distance: result.result.distance, isPb: result.result.isPb, pbImprovementMs: result.result.pbImprovementMs)
             update(value)
         }

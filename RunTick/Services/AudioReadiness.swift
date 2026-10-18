@@ -47,7 +47,7 @@ struct AudioPreparationCard: View {
                 Text("\(Int((audio.volume * 100).rounded()))%").monospacedDigit().fontWeight(.semibold)
             }
             SystemVolumeControl().frame(height: 34).accessibilityLabel("媒体音量，发令前请调至最大")
-            if !audio.maximumVolume { RTNotice(text: audio.volume == 0 ? "当前媒体音量为零，请调至最大，以免听不到枪声。" : "请将媒体音量调至最大，确保清楚听到发令。") }
+            if !audio.maximumVolume { RTNotice(text: audio.volume == 0 ? "当前媒体音量为零，无法听到口令和枪声。建议调高后再开始。" : "建议将媒体音量调至最大；发令前仍可确认按当前音量继续。") }
             HStack { Text("声音输出"); Spacer(); Text(audio.route).foregroundStyle(RT.muted).multilineTextAlignment(.trailing) }.font(.subheadline)
             if !audio.speaker { RTNotice(text: "请断开耳机、蓝牙或外接音响，使用本机扬声器发令，避免输出延迟。") }
             Label("发令可在静音模式下播放", systemImage: "bell.slash").font(.subheadline)

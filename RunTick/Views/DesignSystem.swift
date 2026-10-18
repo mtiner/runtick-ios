@@ -102,9 +102,9 @@ struct RTButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 15, weight: .semibold))
+        configuration.label.font(.subheadline.weight(.semibold)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 24).padding(.horizontal, 16).padding(.vertical, 15)
-            .foregroundStyle(secondary ? RT.ink : .white)
+            .foregroundStyle(RT.ink)
             .background {
                 RoundedRectangle(cornerRadius: 16).fill(secondary ?
                     LinearGradient(colors: [Color(hex: 0xEDF4F2), Color(hex: 0xEDF4F2)], startPoint: .top, endPoint: .bottom) :
@@ -118,7 +118,7 @@ struct RTButtonStyle: ButtonStyle {
 }
 struct RTFieldStyle: ViewModifier {
     func body(content: Content) -> some View {
-        content.font(.system(size: 16)).padding(16).background(RT.background, in: RoundedRectangle(cornerRadius: 14))
+        content.font(.body).padding(16).background(RT.background, in: RoundedRectangle(cornerRadius: 14))
             .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(RT.ink.opacity(0.09)) }
     }
 }

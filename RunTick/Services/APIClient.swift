@@ -12,11 +12,11 @@ private struct Envelope<T: Decodable>: Decodable {
     let session: URLSession
     private let sessionStore: SessionStore
     var unauthorized: (() -> Void)?
-    init(baseURL: URL) {
+    init(baseURL: URL, configuration suppliedConfiguration: URLSessionConfiguration? = nil) {
         self.baseURL = baseURL
         sessionStore = SessionStore(server: baseURL)
         if let cookie = sessionStore.restore() { HTTPCookieStorage.shared.setCookie(cookie) }
-        let configuration = URLSessionConfiguration.default
+        let configuration = suppliedConfiguration ?? URLSessionConfiguration.default
         configuration.httpCookieStorage = .shared
         configuration.httpShouldSetCookies = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -59,7 +59,7 @@ private struct Envelope<T: Decodable>: Decodable {
         }
         let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data)
         guard (200..<300).contains(status), let envelope, envelope.ok, let value = envelope.data else {
-            throw ClientError(status: status, code: envelope?.error?.code ?? "UNKNOWN", message: envelope?.error?.message ?? "请求失败，请稍后重试")
+            throw ClientError(status: status, code: envelope?.error?.code ?? "UNKNOWN", message: status == 401 ? "登录状态已失效，请重新登录。" : status >= 500 ? "服务暂时不可用，请稍后重试。" : envelope?.error?.message ?? "暂时无法读取服务器响应，请稍后重试。")
         }
         return value
     }

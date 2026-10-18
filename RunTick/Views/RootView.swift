@@ -81,6 +81,8 @@ struct RootView: View {
                     HStack { Image(systemName: "chart.xyaxis.line"); Text("历史成绩"); Spacer(); Image(systemName: "arrow.right") }
                 }.rtEntrance(0.12)
             }
+            if !model.syncNotice.isEmpty { RTNotice(text: model.syncNotice) }
+            Button(model.syncingRecords ? "正在同步训练记录…" : "同步本机训练记录") { model.scheduleSync(showConfirmation: true) }.disabled(model.syncingRecords)
             NavigationLink("关于 RunTick") { AboutView() }
             Button { Task { await model.perform { await model.logout() } } } label: { Label("退出登录", systemImage: "power") }
                 .disabled(model.loading).rtEntrance(0.16)
@@ -97,7 +99,7 @@ struct RootView: View {
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("密码").font(.subheadline.weight(.medium))
-                    SecureField("请输入密码", text: $password).textContentType(.password).keyboardType(.numberPad).rtField()
+                    SecureField("请输入密码", text: $password).textContentType(.password).keyboardType(.default).rtField()
                 }
                 Button(model.loading ? "登录中…" : "登录") { Task { await model.perform { try await model.login(id: login, password: password); password = "" } } }
                     .buttonStyle(RTButtonStyle()).disabled(model.loading).accessibilityIdentifier("login.submit")
@@ -126,7 +128,7 @@ struct RootView: View {
                     }
                 Button("加入房间") { Task { await model.perform { try await model.enter(code: code) } } }.disabled(code.count != 4 || !model.lobbyReady || model.loading)
             }.rtEntrance(0.12)
-            if !model.lobbyReady { Button("重试退出旧房间") { Task { await model.perform { try await model.leave() } } } }
+            if !model.lobbyReady { Button("重试恢复房间") { Task { await model.perform { try await model.openCurrentRoom(); model.scheduleSync() } } } }
         }
     }
 }
@@ -153,7 +155,7 @@ struct GuideView: View {
             NetworkPreparationCard(automaticallyCheck: automaticallyCheckNetwork).rtEntrance(0.1)
             RTCard("设备准备") {
                 Text(capabilities).font(.footnote).foregroundStyle(RT.muted)
-                Button("检查设备能力") { capabilities = "陀螺仪：\(motion.isGyroAvailable ? "可用" : "不支持") · 加速度计：\(motion.isAccelerometerAvailable ? "可用" : "不支持")\n系统会话存储 · 房间内自动常亮" }
+                Button("检查设备能力") { capabilities = "陀螺仪：\(motion.isGyroAvailable ? "可用" : "不支持") · 加速度计：\(motion.isAccelerometerAvailable ? "可用" : "不支持")\n登录状态会保留 · 房间内自动保持屏幕点亮" }
 
             }.rtEntrance(0.12)
             AudioPreparationCard().rtEntrance(0.14)

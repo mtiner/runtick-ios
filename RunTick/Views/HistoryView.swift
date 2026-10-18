@@ -10,6 +10,7 @@ struct HistoryView: View {
     @State private var loading = false
     @State private var error = ""
     var filter: String { "\(athleteId):\(distance):\(sort):\(offset)" }
+    init(api: APIClient, user: User, room: String?) { self.api = api; self.user = user; self.room = room; _athleteId = State(initialValue: user.id) }
     var body: some View {
         RTPage {
             RTBrand().rtEntrance()
@@ -27,12 +28,20 @@ struct HistoryView: View {
             if let data {
                 RTCard("历史成绩") {
                     if data.records.isEmpty { Text("暂无成绩，完成计时后由终点填写距离并保存。") }
-                    ForEach(data.records) { record in HStack {
-                        VStack(alignment: .leading) { Text("\(record.distance) 米"); Text(date(record.performedAt)).font(.caption).foregroundStyle(.secondary); Text(ReactionResult.text(record.reactionMs, record.reactionStatus)).font(.caption).foregroundStyle(RT.muted) }
-                        Spacer(); Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).monospacedDigit()
-                        if record.reactionStatus == "false_start" { RTChip(text: "抢跑", lemon: true) }
-                        if record.isPb { RTChip(text: "PB", lemon: true) }
-                    }.padding(.vertical, 10) }
+                    ForEach(data.records) { record in
+                        VStack(alignment: .leading, spacing: 10) {
+                            ViewThatFits(in: .horizontal) {
+                                HStack { Text("\(record.distance) 米").font(.headline); Spacer(); resultText(record) }
+                                VStack(alignment: .leading, spacing: 6) { Text("\(record.distance) 米").font(.headline); resultText(record) }
+                            }
+                            Text(date(record.performedAt)).font(.caption).foregroundStyle(RT.muted)
+                            Text(ReactionResult.text(record.reactionMs, record.reactionStatus)).font(.caption).foregroundStyle(RT.muted)
+                            if record.reactionStatus == "false_start" || record.isPb {
+                                HStack { if record.reactionStatus == "false_start" { RTChip(text: "抢跑", lemon: true) }; if record.isPb { RTChip(text: "PB", lemon: true) } }
+                            }
+                        }.padding(.vertical, 10)
+                        if record.id != data.records.last?.id { Divider() }
+                    }
                 }
                 HStack { Button("上一页") { offset = max(0, offset - 50) }.disabled(offset == 0 || loading); Spacer(); Button("下一页") { offset += 50 }.disabled(!data.hasMore || loading) }
             }
@@ -45,6 +54,7 @@ struct HistoryView: View {
         .onChange(of: sort) { _, _ in offset = 0 }
         .refreshable { await load() }
     }
+    private func resultText(_ record: HistoryRecord) -> some View { Text(String(format: "%.3f 秒", record.elapsedMs / 1000)).font(.title3.bold()).monospacedDigit().fixedSize(horizontal: true, vertical: false) }
     func date(_ value: Double) -> String { Date(timeIntervalSince1970: value / 1000).formatted(date: .abbreviated, time: .shortened) }
     func load() async {
         loading = true; error = ""

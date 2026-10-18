@@ -31,7 +31,11 @@ jobs:
       - name: Run tests on available iOS 26 simulator
         run: |
           ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v[0]["udid"] for k,v in d["devices"].items() if "iOS-26" in k and v))')
-          xcodebuild -project RunTick.xcodeproj -scheme RunTick -derivedDataPath DerivedData -destination "platform=iOS Simulator,id=$ID" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM="" test-without-building
+          xcodebuild -project RunTick.xcodeproj -scheme RunTick -derivedDataPath DerivedData -destination "platform=iOS Simulator,id=$ID" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM="" -resultBundlePath iPhoneTests.xcresult test-without-building
+      - name: Verify navigation and landscape on iPad
+        run: |
+          ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v["udid"] for k,vs in d["devices"].items() if "iOS-26" in k for v in vs if "iPad" in v["name"]))')
+          xcodebuild -project RunTick.xcodeproj -scheme RunTick -derivedDataPath DerivedData -destination "platform=iOS Simulator,id=$ID" -only-testing:RunTickUITests CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM="" -resultBundlePath iPadTests.xcresult test-without-building
       - name: Capture rendered screens
         run: |
           ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(v[0]["udid"] for k,v in d["devices"].items() if "iOS-26" in k and v))')
@@ -68,7 +72,21 @@ jobs:
           xcrun simctl launch --terminate-running-process "$ID" "$BUNDLE_ID" --about-preview
           sleep 2
           xcrun simctl io "$ID" screenshot screenshots/about.png
+      - name: Export UI test screenshots
+        if: always()
+        run: |
+          mkdir -p screenshots/ui-tests
+          if [ -d iPhoneTests.xcresult ]; then xcrun xcresulttool export attachments --path iPhoneTests.xcresult --output-path screenshots/ui-tests/iphone || true; fi
+          if [ -d iPadTests.xcresult ]; then xcrun xcresulttool export attachments --path iPadTests.xcresult --output-path screenshots/ui-tests/ipad || true; fi
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ios-screenshots
           path: screenshots/
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ios-test-reports
+          path: |
+            iPhoneTests.xcresult/
+            iPadTests.xcresult/

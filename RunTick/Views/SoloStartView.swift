@@ -8,6 +8,7 @@ import SwiftUI
     private let audio = StarterAudio(); private let motion = ReactionMotion()
     private var task: Task<Void, Never>?
     private var previousIdleTimer = false
+    private var generation = UUID()
     init(api: APIClient, user: User) {
         self.api = api; self.user = user
         if let bytes = UserDefaults.standard.data(forKey: "starter"), let saved = try? JSONDecoder().decode([StageDelay].self, from: bytes), saved.count == 3 { stages = saved.map(\.normalized) }
@@ -19,6 +20,7 @@ import SwiftUI
         previousIdleTimer = UIApplication.shared.isIdleTimerDisabled; UIApplication.shared.isIdleTimerDisabled = true
         running = true; result = nil; error = ""; cue = "请保持手机与起跑器稳定…"
         UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter")
+        generation = UUID(); let token = generation
         let id = UUID().uuidString, saved = stages
         task = Task {
             do {
@@ -36,10 +38,10 @@ import SwiftUI
                     }
                 })
                 deadline = nil
-            } catch is CancellationError {} catch { self.error = error.localizedDescription; stop() }
+            } catch is CancellationError {} catch { if generation == token { self.error = "发令未完成，请检查声音输出后重试。"; stop() } }
         }
     }
-    func stop() { if running { UIApplication.shared.isIdleTimerDisabled = previousIdleTimer }; task?.cancel(); motion.end(); audio.stop(); running = false; deadline = nil; volumeWarning = false }
+    func stop() { generation = UUID(); if running { UIApplication.shared.isIdleTimerDisabled = previousIdleTimer }; task?.cancel(); motion.end(); audio.stop(); running = false; deadline = nil; volumeWarning = false }
 }
 struct SoloStartView: View {
     @State private var model: SoloStartModel
@@ -110,6 +112,6 @@ struct SoloHistoryView: View {
     private func load(reset: Bool = true) async {
         guard !loading else { return }; loading = true; defer { loading = false }
         do { let data: SoloRecords = try await api.request("/api/starts?offset=\(reset ? 0 : records.count)"); records = reset ? data.records : records + data.records; hasMore = data.hasMore }
-        catch { self.error = error.localizedDescription }
+        catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
 }

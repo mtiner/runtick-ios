@@ -9,7 +9,7 @@ struct HelpView: View {
         ("开始这一组", "任一端点击“开始记录”，调整各就位口令、等待时间及反应时检测开关。确认后起点自动发令，终点提前按住触控区，听到枪声起跑。底部“起跑发令”可单人训练。开启反应时检测需将手机贴靠或固定在起跑器上；小于 100 ms 标注抢跑。"),
         ("冲线时松手", "终点在运动员冲线时松手。触控取消或切换到后台不会记录成绩；提交失败时保留原始时间戳并重试。"),
         ("保存并继续", "终点填写距离并保存，成绩归入起点运动员名下。保存后点击“下一组”。PB 表示该距离当前个人最好成绩。"),
-        ("查看历史与退出", "在“我的”中查看历史成绩，可筛选距离、排序和翻页。退出房间保留登录和成绩；退出登录会清除本机登录状态。")
+        ("查看历史与退出", "在“我的”中查看历史成绩，可筛选距离、排序和翻页。全屏页“返回房间”只返回详情，不退出房间。退出房间保留登录和已保存成绩；退出登录会清除本机登录状态。")
     ]
     var body: some View {
         RTPage {
@@ -27,7 +27,7 @@ struct HelpView: View {
                 }
             }
             NavigationLink { GuideReviewView() } label: {
-                Text("前往权限检测页 →").font(.subheadline).underline().foregroundStyle(RT.deep)
+                Text("检查网络、声音与设备 →").font(.subheadline).underline().foregroundStyle(RT.deep)
             }.buttonStyle(.plain).frame(maxWidth: .infinity).padding(.vertical, 10)
             RTBrandFooter()
         }
@@ -39,7 +39,7 @@ private struct GuideReviewView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         GuideView(continueTitle: "返回使用说明", showHelp: false) { dismiss() }
-            .navigationTitle("权限检测").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("设备准备").navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
     }
 }
