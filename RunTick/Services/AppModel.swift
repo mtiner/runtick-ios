@@ -259,8 +259,8 @@ import SwiftUI
     }
     func autoFire() async {
         guard let race, raceRole == .start, race.active, race.startAt == nil,
-              attemptedAutoStart != race.id, let settings = race.starterSettings,
-              settings.count == 3, settings.allSatisfy(\.valid) else { return }
+              attemptedAutoStart != race.id, let settings = race.starterSettings else { return }
+        guard settings.count == 3, settings.allSatisfy(\.valid) else { error = "本轮发令设置暂不支持，请返回房间后重新设置为 0～10 秒整数。"; return }
         if clock?.fresh != true { await calibrate() }
         guard clock?.fresh == true, !Task.isCancelled else { return }
         attemptedAutoStart = race.id
@@ -268,6 +268,10 @@ import SwiftUI
         await fire()
     }
     func fire(allowReducedVolume: Bool = false) async {
+        if let shared = race?.starterSettings {
+            guard shared.count == 3, shared.allSatisfy(\.valid) else { error = "本轮发令设置暂不支持，请返回房间后重新设置为 0～10 秒整数。"; return }
+            stages = shared
+        }
         guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); if self.clock?.fresh == true { error = "时间校准已完成，请再次发令。" } }; return }
         firing = true; let snapshot = clock
         let token = UUID(); fireGeneration = token

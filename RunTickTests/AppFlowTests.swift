@@ -148,6 +148,14 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertFalse(model.error.contains("已完成"))
         model.stop()
     }
+    func testUnsupportedRemotePlanNeverFallsBackToUnconfirmedLocalSettings() async {
+        let client = api { _ in XCTFail("Invalid remote settings must be rejected locally"); return (200, "{\"ok\":true,\"data\":{}}") }
+        let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
+        model.race = Race(id: "remote", status: "ready", createdAt: 20, startAt: nil, finishAt: nil, elapsedMs: nil, uncertaintyMs: nil, startUserId: 71, finishUserId: 72, savedResult: nil, starterSettings: [StageDelay(random: false, min: 30, max: 30)])
+        await model.fire(allowReducedVolume: true)
+        XCTAssertTrue(model.error.contains("0～10")); XCTAssertFalse(model.firing); XCTAssertNil(model.pending)
+        model.stop()
+    }
     func testTouchTimestampUsesEventClockRatherThanCallbackDelivery() {
         XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.001)
     }
