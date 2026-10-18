@@ -19,7 +19,7 @@ import SwiftUI
                 .tint(Color(red: 0.12, green: 0.62, blue: 0.58))
                 .onChange(of: phase) { _, value in
                     UIApplication.shared.isIdleTimerDisabled = value == .active && model.room != nil
-                    if value == .active { model.room?.resume() } else { model.room?.interrupt() }
+                    if value == .active { model.room?.resume(); model.scheduleSync() } else { model.room?.interrupt() }
                 }
                 .onChange(of: model.room != nil) { _, active in UIApplication.shared.isIdleTimerDisabled = active }
         }

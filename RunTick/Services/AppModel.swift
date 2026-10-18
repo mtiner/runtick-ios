@@ -98,7 +98,7 @@ import SwiftUI
             guard !Task.isCancelled, self.user?.id == user.id else { return }
             do {
                 let _: RaceResponse = try await api.request("/api/rooms/\(pending.code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
-                UserDefaults.standard.removeObject(forKey: key)
+                if UserDefaults.standard.data(forKey: key) == bytes { UserDefaults.standard.removeObject(forKey: key) }
                 if room?.pending?.raceId == pending.raceId { room?.pending = nil }
             } catch is CancellationError { return }
             catch { if ((error as? ClientError)?.status ?? 0) == 0 || ((error as? ClientError)?.status ?? 0) >= 500 { break } }
@@ -165,6 +165,7 @@ import SwiftUI
                 do {
                     let result: RaceResponse = try await api.request("/api/rooms/\(code)/races")
                     if let race = result.race { update(race) }
+                    else { archivePendingFromPreviousRound() }
                     if pending != nil && autoRetry && ProcessInfo.processInfo.systemUptime >= retryAfter { await submit() }
                 } catch is CancellationError { break } catch {
                     let status = (error as? ClientError)?.status ?? 0
@@ -180,10 +181,19 @@ import SwiftUI
         var value = value
         if race?.id == value.id && value.reactionStatus == nil { value.reactionStatus = race?.reactionStatus; value.reactionMs = race?.reactionMs }
         if let race, !race.accepts(value) { return }
+        if let pending, pending.raceId != value.id { archivePendingFromPreviousRound() }
         if race?.id != value.id { recordingClock = value.active && clock?.fresh == true ? clock : nil }
         if value.active && recordingClock == nil && clock?.fresh == true { recordingClock = clock }
         race = value
         if !value.active { recordingClock = nil; interrupt() }
+    }
+    private func archivePendingFromPreviousRound() {
+        guard let old = pending else { return }
+        if let bytes = UserDefaults.standard.data(forKey: pendingKey) {
+            UserDefaults.standard.set(bytes, forKey: pendingKey + ":" + old.raceId)
+            UserDefaults.standard.removeObject(forKey: pendingKey)
+        }
+        pending = nil
     }
     func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
     func interrupt() { fireGeneration = UUID(); pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
@@ -315,10 +325,12 @@ import SwiftUI
     }
     func submit() async {
         guard let pending, !submitting, !stopped else { return }; submitting = true; defer { submitting = false }
+        let savedBytes = UserDefaults.standard.data(forKey: pendingKey)
         do {
             let event = pending.event
             let result: RaceResponse = try await api.request("/api/rooms/\(code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
-            self.pending = nil; UserDefaults.standard.removeObject(forKey: pendingKey)
+            if self.pending?.raceId == pending.raceId { self.pending = nil }
+            if UserDefaults.standard.data(forKey: pendingKey) == savedBytes { UserDefaults.standard.removeObject(forKey: pendingKey) }
             if let race = result.race { update(race) }
         } catch is CancellationError { return }
         catch {
