@@ -334,6 +334,7 @@ import SwiftUI
             if let race = result.race { update(race) }
         } catch is CancellationError { return }
         catch {
+            guard self.pending?.raceId == pending.raceId else { return }
             self.error = "计时记录暂未同步，已保留在此设备上。请联网后重试。"
             let status = (error as? ClientError)?.status ?? 0
             autoRetry = status == 0 || status >= 500
