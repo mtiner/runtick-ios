@@ -103,6 +103,17 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(model.pending?.event.at, 1013)
         model.stop(); clearRecords()
     }
+    func testUnsentTimingPreventsCreatingAnUnrecordableNewRound() async {
+        let client = api { _ in XCTFail("A new race must not be created while the previous timestamp is pending"); return (200, "{\"ok\":true,\"data\":{}}") }
+        let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
+        model.ready = true; model.connected = true
+        model.members = [Member(loginId: "runner", deviceRole: .start, online: true)]
+        model.clock = ClockMapping(offset: 0, uncertaintyMs: 2, averageRttMs: 2, sampledAt: ProcessInfo.processInfo.systemUptime)
+        model.pending = PendingEvent(code: "1234", raceId: "previous", userId: 71, event: TimingEvent(kind: .start, at: 1000, uncertaintyMs: 2))
+        await model.beginRecording()
+        XCTAssertNil(model.race); XCTAssertTrue(model.error.contains("尚未同步"))
+        model.stop()
+    }
     func testTouchTimestampUsesEventClockRatherThanCallbackDelivery() {
         XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.001)
     }
