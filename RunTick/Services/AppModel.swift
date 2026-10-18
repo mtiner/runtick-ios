@@ -284,6 +284,7 @@ import SwiftUI
             cue = "请保持手机与起跑器稳定…"
             try await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
             try Task.checkCancellation()
+            guard fireGeneration == token, !stopped, race?.id == raceId, race?.active == true else { return }
             try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in
                 guard self.fireGeneration == token, self.race?.id == raceId else { return }
                 self.capture(.start, at: at, clock: snapshot, extra: extra)
