@@ -26,7 +26,7 @@ import SwiftUI
             do {
                 try await motion.prepare(enabled: saved[0].reactionEnabled == true); try Task.checkCancellation()
                 try await audio.play(settings: saved, cue: { self.cue = $0; self.deadline = $1 }, gun: { at, _ in
-                    let firedAt = Date().timeIntervalSince1970 * 1000
+                    let firedAt = at
                     self.motion.gun(at: at) { value in
                         self.result = value
                         Task {

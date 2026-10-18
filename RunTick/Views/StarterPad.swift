@@ -40,7 +40,7 @@ struct StarterPad: View {
             }
         }.foregroundStyle(RT.ink)
             .safeAreaInset(edge: .top, spacing: 0) {
-                RecordingHeader(name: model.user.loginId, code: model.code, leave: leave)
+                VStack(spacing:2) { RecordingHeader(name: model.user.loginId, code: model.code, leave: leave); TimeSyncStatus(model:model) }
             }
             .task(id: "\(model.race?.id ?? ""):\(model.race?.starterSettings != nil)") {
                 // Preview renders must never play audio or send timing events.

@@ -1,4 +1,5 @@
 import SwiftUI
+import Network
 
 @MainActor @Observable final class AppModel {
     var api: APIClient?
@@ -97,7 +98,7 @@ import SwiftUI
             let event = pending.event
             guard !Task.isCancelled, self.user?.id == user.id else { return }
             do {
-                let _: RaceResponse = try await api.request("/api/rooms/\(pending.code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
+                let _: RaceResponse = try await api.request("/api/rooms/\(pending.code)/races/\(pending.raceId)/events", method: "POST", body: event.body)
                 if UserDefaults.standard.data(forKey: key) == bytes { UserDefaults.standard.removeObject(forKey: key) }
                 if room?.pending?.raceId == pending.raceId { room?.pending = nil }
             } catch is CancellationError { return }
@@ -158,7 +159,18 @@ import SwiftUI
     }
     func start() {
         guard !started, !stopped else { return }; started = true
-        tasks.append(Task { await calibrate() })
+        if clock == nil, let cached = ntpClient.latest, cached.fresh { clock = cached }
+        tasks.append(Task { if clock?.fresh != true { await calibrate() } })
+        let monitor = NWPathMonitor(); pathMonitor = monitor
+        var initial = true
+        monitor.pathUpdateHandler = { [weak self] _ in
+            if initial { initial = false; return }
+            Task { @MainActor in
+                guard let self, !self.stopped else { return }
+                self.needsResync = true; await self.calibrate()
+            }
+        }
+        monitor.start(queue:DispatchQueue(label:"cc.runtick.network"))
         tasks.append(Task {
             do { let detail: RoomDetail = try await api.request("/api/rooms/\(code)"); if !receivedRoomState { members = detail.members } } catch { self.error = error.localizedDescription }
             while !Task.isCancelled {
@@ -195,28 +207,54 @@ import SwiftUI
         }
         pending = nil
     }
-    func stop() { stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
+    func stop() { pathMonitor?.cancel(); pathMonitor = nil; stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
     func interrupt() { fireGeneration = UUID(); pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
-    func resume() { if (race?.active != true || recordingClock == nil) && clock?.fresh != true { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
+    func resume() { needsResync = true; if (race?.active != true || recordingClock == nil) { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
+    private let ntpClient = NtpClient.shared
+    var allowHTTPFallback = false
+    var syncError = ""
+    private var needsResync = false
+    private var pathMonitor: NWPathMonitor?
+    var syncSummary: String {
+        if syncing { return "时间同步中 · \(progress)/8" }
+        guard let value = recordingClock ?? clock else { return "时间同步失败 · 尚无可用时间基准" }
+        let state = !value.fresh ? "同步失败 · 映射已过期或不可靠" : (value.server != "HTTP" && syncError.isEmpty ? "已同步" : "同步质量下降")
+        return "\(state) · \(value.server) · 年龄 \(Int(value.ageMs/1000))s · 估计不确定度 \(String(format:"%.1f",value.estimatedUncertaintyMs))ms"
+    }
     func calibrate() async {
         guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
         do {
-            var samples: [ClockSample] = []
-            for i in 0..<20 {
-                try Task.checkCancellation()
-                let sent = MonotonicClock.now()
-                let response: ClockResponse = try await api.request("/api/clock?clientSentAt=\(sent)&nonce=\(UUID().uuidString)")
-                let received = MonotonicClock.now()
-                guard response.clientSentAt == sent, response.sentAt >= response.receivedAt, response.processingMs == response.sentAt - response.receivedAt, received - sent >= response.processingMs else { throw ClientError.message("校时响应无效，请重试") }
-                samples.append(ClockSample(sent: sent, received: received, serverReceived: response.receivedAt, serverSent: response.sentAt)); progress = i + 1
+            do { clock = try await ntpClient.synchronize { self.progress = $0 }; syncError = ""; needsResync = false }
+            catch {
+                guard allowHTTPFallback, !(error is CancellationError) else { throw error }
+                clock = try await httpFallback(); syncError = "NTP 不可用，使用 HTTP 降级"; needsResync = false
             }
-            clock = try ClockMapping.average(samples)
+            if let value = clock { print("RunTick sync server=\(value.server) samples=\(value.validSamples) RTT=\(value.averageRttMs) offset=\(value.offset) age=\(value.ageMs) estimatedUncertainty=\(value.estimatedUncertaintyMs)") }
             if race?.active == true && recordingClock == nil { recordingClock = clock }
-        } catch { if clock?.fresh != true { clock = nil }; if !(error is CancellationError) { self.error = error.localizedDescription } }
+        } catch { if !(error is CancellationError) { syncError = error.localizedDescription; self.error = error.localizedDescription } }
+    }
+    private func httpFallback() async throws -> ClockMapping {
+        var samples: [ClockSample] = []
+        for _ in 0..<8 {
+            try Task.checkCancellation()
+            let sent = MonotonicClock.now()
+            let response: ClockResponse = try await api.request("/api/clock?clientSentAt=\(sent)&nonce=\(UUID().uuidString)")
+            let received = MonotonicClock.now()
+            guard response.clientSentAt == sent, response.sentAt >= response.receivedAt,
+                  response.processingMs == response.sentAt-response.receivedAt,
+                  received-sent >= response.processingMs else { throw ClientError.message("HTTP 降级响应无效") }
+            samples.append(ClockSample(sent:sent,received:received,serverReceived:response.receivedAt,serverSent:response.sentAt))
+            try await Task.sleep(nanoseconds:100_000_000)
+        }
+        var value = try NtpQuality.select(samples)
+        let offsets = samples.map { (($0.serverReceived-$0.sent)+($0.serverSent-$0.received))/2 }
+        guard offsets.max()! - offsets.min()! <= 10 else { throw ClientError.message("HTTP 降级质量不足") }
+        value.server = "HTTP"; value.validSamples = samples.count
+        return value
     }
     func pick(_ target: DeviceRole) async {
         guard race?.active != true, connected, !busy, !stopped,
@@ -244,6 +282,7 @@ import SwiftUI
         }
     }
     func beginRecording() async {
+        if needsResync || clock?.fresh != true { await calibrate() }
         guard pending == nil else { error = "上一轮计时记录尚未同步，请重新同步后再开始。"; return }
         guard ready, connected, role != nil, !roleSaving, clock?.fresh == true, !syncing else {
             error = roleSaving ? "角色正在后台同步，请稍后开始记录。" : "请等待两端就绪并完成校时，再开始记录。"; return
@@ -273,7 +312,7 @@ import SwiftUI
             stages = shared
         }
         guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); if self.clock?.fresh == true { error = "时间校准已完成，请再次发令。" } }; return }
-        firing = true; let snapshot = clock
+        firing = true; let snapshot = recordingClock ?? clock
         let token = UUID(); fireGeneration = token
         let raceId = race!.id
         defer { if fireGeneration == token { firing = false; cueDeadline = nil } }
@@ -324,7 +363,12 @@ import SwiftUI
     private func capture(_ kind: DeviceRole, at: Double, clock: ClockMapping, extra: Double = 0) {
         guard pending == nil, let race else { return }
         autoRetry = true
-        pending = PendingEvent(code: code, raceId: race.id, userId: user.id, event: TimingEvent(kind: kind, at: at + clock.offset, uncertaintyMs: clock.uncertaintyMs + extra))
+        pending = PendingEvent(code: code, raceId: race.id, userId: user.id, event: TimingEvent(kind: kind, at: clock.utcAt(at), uncertaintyMs: clock.estimatedUncertaintyMs + extra, monoNanos: String(MonotonicClock.nanosAt(at)), deviceId: DeviceIdentity.value, sessionId: race.id, syncServer: clock.server, syncRttMs: clock.averageRttMs, syncAgeMs: clock.ageMs, syncOffsetMs: clock.offset, syncSource: clock.server == "HTTP" ? "HTTP" : "NTP"))
+        if let event = pending, let bytes = try? JSONEncoder().encode(event) {
+            let key = "runtick.eventDiagnostics"
+            var audit = UserDefaults.standard.array(forKey:key) as? [Data] ?? []
+            audit.append(bytes); UserDefaults.standard.set(Array(audit.suffix(200)),forKey:key)
+        }
         UserDefaults.standard.set(try? JSONEncoder().encode(pending), forKey: pendingKey)
         tasks.append(Task { await submit() })
     }
@@ -333,7 +377,7 @@ import SwiftUI
         let savedBytes = UserDefaults.standard.data(forKey: pendingKey)
         do {
             let event = pending.event
-            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races/\(pending.raceId)/events", method: "POST", body: ["kind": event.kind.rawValue, "at": event.at, "uncertaintyMs": event.uncertaintyMs])
+            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races/\(pending.raceId)/events", method: "POST", body: event.body)
             if self.pending?.raceId == pending.raceId { self.pending = nil }
             if UserDefaults.standard.data(forKey: pendingKey) == savedBytes { UserDefaults.standard.removeObject(forKey: pendingKey) }
             if let race = result.race { update(race) }

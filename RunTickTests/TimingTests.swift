@@ -195,3 +195,118 @@ final class TimingTests: XCTestCase {
         XCTAssertTrue(completed.accepts(completed))
     }
 }
+
+final class NtpTests: XCTestCase {
+    func packet(_ t: Double) -> ([UInt8],[UInt8]) {
+        var request = [UInt8](repeating:0,count:48); request[0] = 0x23
+        NtpPacket.write(&request,40,utcMs:t)
+        var response = [UInt8](repeating:0,count:48); response[0] = 0x24; response[1] = 2
+        response.replaceSubrange(24..<32,with:request[40..<48])
+        NtpPacket.write(&response,32,utcMs:t+6); NtpPacket.write(&response,40,utcMs:t+7)
+        return (request,response)
+    }
+    func testEpochAnd2036EraRollover() {
+        for time in [0.0, 1_700_000_000_123.25, 2_085_978_495_999.0, 2_085_978_496_001.5, 4_000_000_000_000.0] {
+            var bytes = [UInt8](repeating:0,count:48)
+            NtpPacket.write(&bytes,40,utcMs:time)
+            XCTAssertEqual(NtpPacket.timestamp(bytes,40,pivotMs:time),time,accuracy:0.002)
+        }
+    }
+    func testFourTimestampsAndValidation() throws {
+        let t = 1_700_000_000_000.0
+        let (request,response) = packet(t)
+        let sample = try NtpPacket.parse(response,request:request,t1:t,t4:t+11)
+        let mapping = try ClockMapping.average([sample])
+        XCTAssertEqual(mapping.offset,1,accuracy:0.002)
+        XCTAssertEqual(mapping.averageRttMs,10,accuracy:0.002)
+        for index in [0,1,24,32,40] {
+            var invalid = response
+            if index == 0 { invalid[0] = 0xe4 }
+            else if index == 1 { invalid[1] = 16 }
+            else if index == 24 { invalid[24] ^= 1 }
+            else { invalid.replaceSubrange(index..<index+8,with:[UInt8](repeating:0,count:8)) }
+            XCTAssertThrowsError(try NtpPacket.parse(invalid,request:request,t1:t,t4:t+11))
+        }
+        XCTAssertThrowsError(try NtpPacket.parse([0],request:request,t1:t,t4:t+11))
+        var kod = response; kod[1] = 0; kod.replaceSubrange(12..<16,with:Array("RATE".utf8))
+        XCTAssertThrowsError(try NtpPacket.parse(kod,request:request,t1:t,t4:t+11)) { XCTAssertTrue($0 is NtpPacket.Kiss) }
+    }
+    func testMappingUsesDifferenceAndFrozenSnapshot() {
+        let local = MonotonicClock.now()
+        var mapping = ClockMapping(offset:100,uncertaintyMs:3,averageRttMs:2,sampledAt:local/1000)
+        mapping.referenceMono = MonotonicClock.nanosAt(local); mapping.referenceUTC = 1_700_000_000_000
+        let locked = mapping
+        mapping.referenceUTC = 9_000_000_000_000
+        XCTAssertEqual(locked.utcAt(local+1234.5),1_700_000_001_234.5,accuracy:0.002)
+        XCTAssertNotEqual(mapping.utcAt(local),locked.utcAt(local))
+        let old = ClockMapping(offset:0,uncertaintyMs:3,averageRttMs:2,sampledAt:(local-121000)/1000)
+        XCTAssertFalse(old.fresh)
+        XCTAssertGreaterThan(old.estimatedUncertaintyMs,old.uncertaintyMs)
+    }
+    @MainActor func testTencentPreferenceFallbackAndBothUnavailable() async throws {
+        for fails in [0,1,2] {
+            let client = NtpClient(); client.configuration.validSamples = 3
+            client.pause = { _ in }
+            var hosts: [String] = []
+            client.exchange = { host, _ in
+                hosts.append(host)
+                if fails == 2 || (fails == 1 && host == "ntp.tencent.com") { throw ClientError.message("UDP blocked") }
+                return ClockSample(sent:0,received:10,serverReceived:6,serverSent:6)
+            }
+            do {
+                let result = try await client.synchronize { _ in }
+                XCTAssertLessThan(fails,2)
+                XCTAssertEqual(result.server,fails == 0 ? "ntp.tencent.com" : "ntp.aliyun.com")
+            } catch { XCTAssertEqual(fails,2) }
+            XCTAssertEqual(hosts.first,"ntp.tencent.com")
+            if fails == 0 { XCTAssertFalse(hosts.contains("ntp.aliyun.com")) }
+        }
+    }
+}
+
+extension NtpTests {
+    @MainActor func testInvalidResponseFallbackAndRetryPolicy() async throws {
+        let client=NtpClient(); client.configuration.validSamples=3; client.configuration.consecutiveFailureLimit=2
+        client.pause={ _ in }
+        var failures=0
+        client.exchange={ server, _ in
+            if server=="ntp.tencent.com" {
+                failures += 1
+                _ = try NtpPacket.parse([0],request:[UInt8](repeating:0,count:48),t1:0,t4:1)
+            }
+            return ClockSample(sent:0,received:10,serverReceived:6,serverSent:6)
+        }
+        let value=try await client.synchronize { _ in }
+        XCTAssertEqual(value.server,"ntp.aliyun.com"); XCTAssertEqual(failures,2)
+    }
+    func testDriftBudgetAndInteroperableRaceVector() throws {
+        let local=MonotonicClock.now()
+        let tired=ClockMapping(offset:0,uncertaintyMs:24,averageRttMs:2,sampledAt:(local-30000)/1000)
+        XCTAssertFalse(tired.fresh)
+        let json=#"{"kind":"start","at":1700000000000.25,"uncertaintyMs":3,"monoNanos":"18446744073709550000","deviceId":"ios","sessionId":"round","syncServer":"ntp.tencent.com","syncSource":"NTP"}"#
+        let event=try JSONDecoder().decode(TimingEvent.self,from:Data(json.utf8))
+        XCTAssertEqual(event.monoNanos,"18446744073709550000")
+        XCTAssertEqual(1700000010000.75-event.at,10000.5)
+        let samples=[ClockSample](repeating:ClockSample(sent:0,received:10,serverReceived:6,serverSent:6),count:8)
+        let mapping=try NtpQuality.select(samples)
+        XCTAssertEqual(mapping.offset,1); XCTAssertEqual(mapping.uncertaintyMs,7.0005,accuracy:0.000001)
+    }
+}
+
+extension NtpTests {
+    @MainActor func testKissDenialIsNotRetriedInNextRound() async throws {
+        let client=NtpClient(); client.configuration.validSamples=3; client.pause={ _ in }
+        var deniedRequests=0
+        client.exchange={ host, _ in
+            if host=="ntp.tencent.com" { deniedRequests += 1; throw NtpPacket.Kiss(code:"DENY",poll:4) }
+            return ClockSample(sent:0,received:10,serverReceived:6,serverSent:6)
+        }
+        _ = try await client.synchronize { _ in }
+        _ = try await client.synchronize { _ in }
+        XCTAssertEqual(deniedRequests,1)
+    }
+    func testUnstableAndSlowSamplesDoNotClaimAccuracy() {
+        let slow=[ClockSample](repeating:ClockSample(sent:0,received:1000,serverReceived:500,serverSent:500),count:8)
+        XCTAssertThrowsError(try NtpQuality.select(slow))
+    }
+}
