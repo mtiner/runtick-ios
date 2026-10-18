@@ -189,3 +189,24 @@ struct RTCodeInput: View {
         }.contentShape(Rectangle()).onTapGesture { focused = true }
     }
 }
+
+// Keep navigation separate from the scrolling or touch-capture content.
+struct RecordingHeader: View {
+    let name: String
+    let code: String
+    let leave: () -> Void
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(name) · 房间 \(code)")
+                .lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("recording.roomLabel")
+            Button("返回房间", action: leave)
+                .buttonStyle(.glass).fixedSize()
+                .accessibilityIdentifier("recording.return")
+        }
+        .font(.subheadline)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .padding()
+    }
+}

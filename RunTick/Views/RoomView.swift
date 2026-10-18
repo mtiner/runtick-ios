@@ -166,7 +166,6 @@ struct FinishPad: View {
             (model.pressed ? Color(red: 0.72, green: 0.93, blue: 0.47) : Color(red: 0.40, green: 0.86, blue: 0.83)).ignoresSafeArea()
             GeometryReader { geometry in
             VStack(spacing: min(24, geometry.size.height * 0.035)) {
-                HStack { Text("\(model.user.loginId) · 房间 \(model.code)").lineLimit(1).truncationMode(.middle); Spacer() }.padding().padding(.trailing, 120)
                 Spacer()
                 ZStack {
                     Circle().stroke(.white.opacity(0.25), lineWidth: 1).frame(width: min(180, geometry.size.height * 0.25), height: min(180, geometry.size.height * 0.25))
@@ -180,10 +179,13 @@ struct FinishPad: View {
             }.padding(.bottom, 30).frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }.allowsHitTesting(false)
             TouchCapture(onDown: { model.press() }, onUp: { model.release(at: $0) }, onCancel: { model.cancelPress() }).padding(.top, 100)
-            VStack { HStack { Spacer(); Button("返回房间", action: { model.cancelPress(); leave() }).buttonStyle(.glass).accessibilityIdentifier("recording.return") }; Spacer(); TimelineView(.periodic(from: .now, by: 1)) { _ in
+            VStack { Spacer(); TimelineView(.periodic(from: .now, by: 1)) { _ in
                 if !model.hasRecordingClock { Button(model.syncing ? "正在校时…" : "重新校时") { Task { await model.calibrate() } }.buttonStyle(.glass).disabled(model.syncing) }
             } }.padding()
         }.animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.pressed).sensoryFeedback(.impact(weight: .light), trigger: model.pressed).foregroundStyle(Color(red: 0.07, green: 0.24, blue: 0.23))
+            .safeAreaInset(edge: .top, spacing: 0) {
+                RecordingHeader(name: model.user.loginId, code: model.code) { model.cancelPress(); leave() }
+            }
             .onChange(of: phase) { _, phase in if phase != .active { model.cancelPress() } }
             .onDisappear { model.cancelPress() }
             .rtErrorAlert($model.error)

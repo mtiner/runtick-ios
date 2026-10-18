@@ -9,7 +9,6 @@ struct StarterPad: View {
             GeometryReader { geometry in
             ScrollView {
             VStack(spacing: 22) {
-                HStack { Text("\(model.user.loginId) · 房间 \(model.code)"); Spacer() }
                 Spacer()
                 TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                     VStack(spacing: 22) {
@@ -36,14 +35,13 @@ struct StarterPad: View {
                 Spacer()
                 Text("保持 App 在前台，使用本机扬声器播放")
                     .font(.footnote).foregroundStyle(RT.muted)
-            }.padding(.horizontal, 28).padding(.top, 76).padding(.bottom, 28).frame(maxWidth: 650).frame(maxWidth: .infinity).frame(minHeight: geometry.size.height)
+            }.padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 28).frame(maxWidth: 650).frame(maxWidth: .infinity).frame(minHeight: geometry.size.height)
             }
             }
-            VStack {
-                HStack { Spacer(); Button("返回房间", action: leave).buttonStyle(.glass).accessibilityIdentifier("recording.return") }
-                Spacer()
-            }.padding()
         }.foregroundStyle(RT.ink)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                RecordingHeader(name: model.user.loginId, code: model.code, leave: leave)
+            }
             .task(id: "\(model.race?.id ?? ""):\(model.race?.starterSettings != nil)") {
                 // Preview renders must never play audio or send timing events.
                 #if DEBUG

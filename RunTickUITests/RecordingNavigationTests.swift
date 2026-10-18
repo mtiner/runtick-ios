@@ -45,6 +45,9 @@ final class RecordingNavigationTests: XCTestCase {
         app.launch()
         let back = app.buttons["recording.return"]
         XCTAssertTrue(back.waitForExistence(timeout: 10)); XCTAssertTrue(back.isHittable)
+        let label = app.staticTexts["recording.roomLabel"]
+        XCTAssertTrue(label.exists)
+        XCTAssertFalse(label.frame.intersects(back.frame), "Room title and return action must not overlap")
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); attachment.name = "large-text-starter"; attachment.lifetime = .keepAlways; add(attachment)
         back.tap()
         let resume = app.buttons["room.resumeRecording"]
