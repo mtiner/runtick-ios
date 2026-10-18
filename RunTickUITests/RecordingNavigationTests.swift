@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class RecordingNavigationTests: XCTestCase {
     @MainActor func testReturnFromFinishKeepsRoomAndCanReopenRecording() {
@@ -21,10 +22,14 @@ final class RecordingNavigationTests: XCTestCase {
         XCTAssertTrue(app.buttons["退出房间"].firstMatch.exists)
     }
     @MainActor func testRecordingLayoutInLandscapeWhenSupported() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPhone uses portrait recording") }
         let app = XCUIApplication(); app.launchArguments = ["--finish-preview"]; app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
         defer { XCUIDevice.shared.orientation = .portrait }
-        guard app.windows.firstMatch.frame.width > app.windows.firstMatch.frame.height else { throw XCTSkip("iPhone uses portrait recording") }
+        let rotated = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.windows.firstMatch.frame.width > app.windows.firstMatch.frame.height
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 10), .completed)
         let back = app.buttons["recording.return"]
         XCTAssertTrue(back.waitForExistence(timeout: 5)); XCTAssertTrue(back.isHittable)
         XCTAssertTrue(app.staticTexts["按住屏幕，等待冲线"].isHittable)

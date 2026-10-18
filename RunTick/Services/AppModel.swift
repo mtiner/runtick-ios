@@ -10,6 +10,7 @@ import SwiftUI
     var syncNotice = ""
     private var syncTask: Task<Void, Never>?
     private var resolvingRoom = false
+    private var syncGeneration = UUID()
     private let injectedClient: Bool
     init(api: APIClient? = nil) { self.api = api; injectedClient = api != nil }
     let serverAddress = AppConfiguration.serverURL.absoluteString
@@ -23,7 +24,7 @@ import SwiftUI
             }
         }
     }
-    func clearSession() { syncTask?.cancel(); syncTask = nil; syncNotice = ""; room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
+    func clearSession() { syncGeneration = UUID(); syncTask?.cancel(); syncTask = nil; syncNotice = ""; room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
     func restore() async {
         guard !serverAddress.isEmpty else { return }
         await perform {
@@ -78,8 +79,10 @@ import SwiftUI
     var syncingRecords: Bool { syncTask != nil }
     func scheduleSync(showConfirmation: Bool = false) {
         guard syncTask == nil else { return }
+        let token = UUID(); syncGeneration = token
         syncTask = Task {
             await replayPending()
+            guard syncGeneration == token, !Task.isCancelled else { return }
             if showConfirmation && syncNotice.isEmpty && user != nil { syncNotice = "本机训练记录已同步。" }
             syncTask = nil
         }
