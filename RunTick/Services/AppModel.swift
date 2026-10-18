@@ -282,8 +282,8 @@ import Network
         }
     }
     func beginRecording() async {
-        if needsResync || clock?.fresh != true { await calibrate() }
         guard pending == nil else { error = "上一轮计时记录尚未同步，请重新同步后再开始。"; return }
+        if needsResync || clock?.fresh != true { await calibrate() }
         guard ready, connected, role != nil, !roleSaving, clock?.fresh == true, !syncing else {
             error = roleSaving ? "角色正在后台同步，请稍后开始记录。" : "请等待两端就绪并完成校时，再开始记录。"; return
         }

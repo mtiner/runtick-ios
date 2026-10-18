@@ -103,14 +103,15 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         clearRecords()
         let client = api { _ in (200, "{\"ok\":true,\"data\":{\"race\":null}}") }
         let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
-        model.clock = ClockMapping(offset: 13, uncertaintyMs: 2, averageRttMs: 2, sampledAt: ProcessInfo.processInfo.systemUptime)
+        model.clock = ClockMapping(offset: 13, uncertaintyMs: 2, averageRttMs: 2, sampledAt: MonotonicClock.now() / 1000)
         model.update(Race(id: "race", status: "ready", createdAt: 10, startAt: nil, finishAt: nil, elapsedMs: nil, uncertaintyMs: nil, startUserId: 72, finishUserId: 71, savedResult: nil))
-        model.clock = ClockMapping(offset: 900, uncertaintyMs: 3, averageRttMs: 3, sampledAt: ProcessInfo.processInfo.systemUptime - 121)
+        model.clock = ClockMapping(offset: 900, uncertaintyMs: 3, averageRttMs: 3, sampledAt: MonotonicClock.now() / 1000 - 121)
         XCTAssertTrue(model.hasRecordingClock)
         model.press(); XCTAssertTrue(model.pressed)
-        model.cancelPress(); model.release(at: 1000); XCTAssertNil(model.pending)
-        model.press(); model.release(at: 1000)
-        XCTAssertEqual(model.pending?.event.at, 1013)
+        let eventAt = MonotonicClock.now()
+        model.cancelPress(); model.release(at: eventAt); XCTAssertNil(model.pending)
+        model.press(); model.release(at: eventAt)
+        XCTAssertEqual(model.pending?.event.at, eventAt + 13)
         model.stop(); clearRecords()
     }
     func testUnsentTimingPreventsCreatingAnUnrecordableNewRound() async {
@@ -118,7 +119,7 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
         model.ready = true; model.connected = true
         model.members = [Member(loginId: "runner", deviceRole: .start, online: true)]
-        model.clock = ClockMapping(offset: 0, uncertaintyMs: 2, averageRttMs: 2, sampledAt: ProcessInfo.processInfo.systemUptime)
+        model.clock = ClockMapping(offset: 0, uncertaintyMs: 2, averageRttMs: 2, sampledAt: MonotonicClock.now() / 1000)
         model.pending = PendingEvent(code: "1234", raceId: "previous", userId: 71, event: TimingEvent(kind: .start, at: 1000, uncertaintyMs: 2))
         await model.beginRecording()
         XCTAssertNil(model.race); XCTAssertTrue(model.error.contains("尚未同步"))
