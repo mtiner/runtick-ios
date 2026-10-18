@@ -139,6 +139,15 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(UserDefaults.standard.data(forKey: model.pendingKey + ":cancelled-round"), bytes)
         model.stop(); clearRecords()
     }
+    func testFailedCalibrationDoesNotClaimItSucceeded() async {
+        let client = api { _ in (503, "{\"ok\":false,\"error\":{\"code\":\"UNAVAILABLE\",\"message\":\"暂不可用\"}}") }
+        let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
+        await model.fire()
+        XCTAssertNil(model.clock)
+        XCTAssertTrue(model.error.contains("服务暂时不可用"))
+        XCTAssertFalse(model.error.contains("已完成"))
+        model.stop()
+    }
     func testTouchTimestampUsesEventClockRatherThanCallbackDelivery() {
         XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.001)
     }

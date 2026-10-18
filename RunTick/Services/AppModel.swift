@@ -268,7 +268,7 @@ import SwiftUI
         await fire()
     }
     func fire(allowReducedVolume: Bool = false) async {
-        guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); error = "校时已更新，请再次发令" }; return }
+        guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); if self.clock?.fresh == true { error = "时间校准已完成，请再次发令。" } }; return }
         firing = true; let snapshot = clock
         let token = UUID(); fireGeneration = token
         let raceId = race!.id
