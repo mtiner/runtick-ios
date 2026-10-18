@@ -3,13 +3,13 @@ import Foundation
 import Darwin
 #endif
 
-struct User: Codable, Identifiable { let id: Int; let loginId: String }
+struct User: Codable, Identifiable { let id: Int; let loginId: String; var avatar: String? = nil }
 enum DeviceRole: String, Codable, CaseIterable { case start, finish
     var title: String { self == .start ? "起点" : "终点" }
 }
 struct Room: Codable { let code: String; let status: String? }
 struct Member: Decodable, Identifiable {
-    var id: String { loginId }; let loginId: String; let deviceRole: DeviceRole?; var online: Bool?
+    var id: String { loginId }; let loginId: String; let deviceRole: DeviceRole?; var online: Bool?; var avatar: String? = nil
 }
 struct RoomDetail: Decodable { let room: Room; let ownerLoginId: String; let members: [Member] }
 struct HubState: Decodable { let type: String; let members: [Member]?; let ready: Bool? }

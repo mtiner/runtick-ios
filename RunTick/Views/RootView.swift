@@ -8,6 +8,7 @@ struct RootView: View {
     @State private var login = ""
     @State private var password = ""
     @State private var code = ""
+    @State private var showAvatarPicker = false
     private enum Destination: Hashable { case room, starter, profile }
     @State private var destination = Destination.room
     @State private var profilePath = NavigationPath()
@@ -24,7 +25,7 @@ struct RootView: View {
                             Group {
                                 if model.user == nil { loginView }
                                 else if let room = model.room {
-                                    RoomView(model: room, leave: { Task { await model.perform { room.error = ""; do { try await model.leave() } catch { room.error = error.localizedDescription } } } })
+                                    RoomView(model: room, onEditAvatar: { showAvatarPicker = true }, leave: { Task { await model.perform { room.error = ""; do { try await model.leave() } catch { room.error = error.localizedDescription } } } })
                                 } else { lobby }
                             }.toolbar(.hidden, for: .navigationBar)
                         }
@@ -46,6 +47,13 @@ struct RootView: View {
                 }
             }
         }
+        .sheet(isPresented:$showAvatarPicker) {
+            if let api = model.api, let user = model.user {
+                AvatarPickerView(api:api,current:user.avatar,save: { try await model.updateAvatar($0) })
+                    .id(user.id)
+            }
+        }
+        .onChange(of:model.user?.id) { _, _ in showAvatarPicker = false }
         .overlay { if model.loading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16)) } }
         .rtErrorAlert($model.error, enabled: model.room == nil)
         .onChange(of: destination) { _, target in
@@ -68,16 +76,17 @@ struct RootView: View {
             RTHero(badge: "个人中心", title: "我的").rtEntrance(0.04)
             RTCard {
                 VStack(spacing: 14) {
-                    Text(String(user.loginId.prefix(1)).uppercased())
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .frame(width: 72, height: 72).background(RT.aqua.opacity(0.22), in: RoundedRectangle(cornerRadius: 22))
+                    Button { showAvatarPicker = true } label: {
+                        UserAvatarView(filename:user.avatar,name:user.loginId,size:72)
+                    }.buttonStyle(.plain).accessibilityLabel("修改头像").accessibilityIdentifier("profile.avatar")
+                    Text("点击头像更换").font(.caption).foregroundStyle(RT.muted)
                     Text(user.loginId).font(.title2.bold())
                     Text("账号 ID：\(user.id)").font(.footnote).foregroundStyle(RT.muted)
                     Label("已登录", systemImage: "circle.fill").font(.caption).foregroundStyle(RT.deep)
                 }.frame(maxWidth: .infinity).padding(.vertical, 8)
             }.rtEntrance(0.08)
             if let api = model.api {
-                NavigationLink { HistoryView(api: api, user: user, room: nil) } label: {
+                NavigationLink { HistoryView(api: api, user: user, room: nil, onEditAvatar:{ showAvatarPicker = true }) } label: {
                     HStack { Image(systemName: "chart.xyaxis.line"); Text("历史成绩"); Spacer(); Image(systemName: "arrow.right") }
                 }.rtEntrance(0.12)
             }
@@ -86,7 +95,10 @@ struct RootView: View {
             NavigationLink("关于 RunTick") { AboutView() }
             Button { Task { await model.perform { await model.logout() } } } label: { Label("退出登录", systemImage: "power") }
                 .disabled(model.loading).rtEntrance(0.16)
-        }.task { model.scheduleSync() }
+        }.task {
+            model.scheduleSync()
+            do { try await model.refreshProfile() } catch is CancellationError {} catch { model.error = error.localizedDescription }
+        }
     }
     var loginView: some View {
         RTPage {
@@ -163,5 +175,83 @@ struct GuideView: View {
             Text("请使用手机扬声器。计时估算误差不含人工反应。").font(.caption).foregroundStyle(RT.muted).frame(maxWidth: .infinity)
             RTBrandFooter()
         }
+    }
+}
+
+struct UserAvatarView: View {
+    let filename: String?
+    let name: String
+    var size: CGFloat = 40
+    var body: some View {
+        AsyncImage(url:AvatarImageURL.make(filename)) { phase in
+            if let image = phase.image { image.resizable().scaledToFit().padding(size * 0.06) }
+            else { Text(String(name.prefix(1)).uppercased()).font(.system(size:size * 0.4,weight:.bold,design:.rounded)).foregroundStyle(RT.deep) }
+        }
+        .frame(width:size,height:size)
+        .background(RT.aqua.opacity(0.22),in:RoundedRectangle(cornerRadius:size * 0.3))
+        .clipShape(RoundedRectangle(cornerRadius:size * 0.3))
+        .accessibilityHidden(true)
+    }
+}
+
+struct AvatarPickerView: View {
+    let api: APIClient
+    let current: String?
+    let save: (String) async throws -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var avatars: [AvatarOption] = []
+    @State private var selected: String?
+    @State private var loading = true
+    @State private var saving = false
+    @State private var error = ""
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing:16) {
+                    if loading { ProgressView("加载头像图库…") }
+                    if !error.isEmpty { Text(error).foregroundStyle(.red).font(.footnote) }
+                    if avatars.isEmpty && !loading { Button("重新加载") { Task { await load() } } }
+                    LazyVGrid(columns:[GridItem(.adaptive(minimum:140))],spacing:16) {
+                        ForEach(avatars) { item in
+                            Button { selected = item.filename } label: {
+                                VStack(spacing:8) {
+                                    UserAvatarView(filename:item.filename,name:"头像",size:80)
+                                    Text(item.title).font(.caption).foregroundStyle(RT.ink).multilineTextAlignment(.center)
+                                    Image(systemName:selected == item.filename ? "checkmark.circle.fill" : "circle").foregroundStyle(RT.deep)
+                                }.frame(maxWidth:.infinity).padding(10)
+                                    .background(selected == item.filename ? RT.aqua.opacity(0.18) : Color.clear,in:RoundedRectangle(cornerRadius:16))
+                            }.buttonStyle(.plain).disabled(saving).accessibilityLabel(item.title).accessibilityAddTraits(selected == item.filename ? .isSelected : [])
+                        }
+                    }
+                }.padding()
+            }
+            .navigationTitle("选择头像").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement:.cancellationAction) { Button("取消") { dismiss() }.disabled(saving) }
+                ToolbarItem(placement:.confirmationAction) {
+                    Button(saving ? "保存中…" : "保存") {
+                        guard let selected else { return }
+                        saving = true; error = ""
+                        Task {
+                            do { try await save(selected); dismiss() }
+                            catch is CancellationError {}
+                            catch { self.error = error.localizedDescription }
+                            saving = false
+                        }
+                    }.disabled(saving || loading || selected == current || !avatars.contains(where:{ $0.filename == selected }))
+                }
+            }
+        }
+        .interactiveDismissDisabled(saving)
+        .task { selected = current; await load() }
+    }
+    private func load() async {
+        loading = true; error = ""
+        defer { loading = false }
+        do {
+            let gallery: AvatarGallery = try await api.request("/api/avatars")
+            avatars = gallery.avatars.filter { $0.url != nil }
+            if avatars.isEmpty { error = "头像图库暂时不可用，请稍后重试。" }
+        } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
 }

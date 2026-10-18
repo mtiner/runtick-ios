@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     let api: APIClient; let user: User; let room: String?
+    let onEditAvatar: (() -> Void)?
     @State private var data: HistoryData?
     @State private var athleteId = 0
     @State private var distance = 0
@@ -9,14 +10,22 @@ struct HistoryView: View {
     @State private var offset = 0
     @State private var loading = false
     @State private var error = ""
-    var filter: String { "\(athleteId):\(distance):\(sort):\(offset)" }
-    init(api: APIClient, user: User, room: String?) { self.api = api; self.user = user; self.room = room; _athleteId = State(initialValue: user.id) }
+    var filter: String { "\(athleteId):\(distance):\(sort):\(offset):\(user.avatar ?? "")" }
+    init(api: APIClient, user: User, room: String?, onEditAvatar: (() -> Void)? = nil) { self.api = api; self.user = user; self.room = room; self.onEditAvatar = onEditAvatar; _athleteId = State(initialValue: user.id) }
     var body: some View {
         RTPage {
             RTBrand().rtEntrance()
             RTHero(badge: "训练档案", title: "历史成绩", subtitle: "每一次出发，都在向更好的自己靠近。").rtEntrance(0.04)
             NavigationLink("单人起跑记录") { SoloHistoryView(api: api) }
             RTCard("筛选") {
+                if let athlete = data?.athletes.first(where:{ $0.id == athleteId }) {
+                    HStack {
+                        if athlete.id == user.id, let onEditAvatar {
+                            Button(action:onEditAvatar) { UserAvatarView(filename:athlete.avatar,name:athlete.loginId,size:32) }.buttonStyle(.plain).accessibilityLabel("修改头像")
+                        } else { UserAvatarView(filename:athlete.avatar,name:athlete.loginId,size:32) }
+                        Text(athlete.loginId).font(.subheadline)
+                    }
+                }
                 if let data, data.athletes.count > 1 {
                     Picker("运动员", selection: $athleteId) { ForEach(data.athletes) { athlete in Text(athlete.id == user.id ? "我" : athlete.loginId).tag(athlete.id) } }
                 }

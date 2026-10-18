@@ -12,6 +12,7 @@ import Network
     private var syncTask: Task<Void, Never>?
     private var resolvingRoom = false
     private var syncGeneration = UUID()
+    private var profileRevision = UUID()
     private let injectedClient: Bool
     init(api: APIClient? = nil) { self.api = api; injectedClient = api != nil }
     let serverAddress = AppConfiguration.serverURL.absoluteString
@@ -25,7 +26,7 @@ import Network
             }
         }
     }
-    func clearSession() { syncGeneration = UUID(); syncTask?.cancel(); syncTask = nil; syncNotice = ""; room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
+    func clearSession() { profileRevision = UUID(); syncGeneration = UUID(); syncTask?.cancel(); syncTask = nil; syncNotice = ""; room?.stop(); room = nil; user = nil; lobbyReady = false; api?.clearCookies() }
     func restore() async {
         guard !serverAddress.isEmpty else { return }
         await perform {
@@ -49,6 +50,23 @@ import Network
         try configure(reset: true)
         let result: UserResponse = try await api!.request("/api/auth/login", method: "POST", body: ["userId": id, "password": password])
         user = result.user; try api!.remember(result.user); try await openCurrentRoom(); scheduleSync()
+    }
+    func updateAvatar(_ filename: String) async throws {
+        guard let client = api, let current = user else { throw ClientError.message("请先登录") }
+        let revision = UUID(); profileRevision = revision
+        let result: UserResponse = try await client.request("/api/auth/avatar", method:"PATCH",body:["avatar":filename])
+        try Task.checkCancellation()
+        guard profileRevision == revision, api === client, user?.id == current.id, result.user.id == current.id else { throw CancellationError() }
+        user = result.user
+        room?.updateProfileAvatar(result.user.avatar)
+        try client.remember(result.user)
+    }
+    func refreshProfile() async throws {
+        guard let client = api, let current = user else { return }
+        let revision = profileRevision
+        let result: UserResponse = try await client.request("/api/auth/me")
+        guard profileRevision == revision, api === client, user?.id == current.id, result.user.id == current.id else { return }
+        user = result.user; room?.updateProfileAvatar(result.user.avatar); try client.remember(result.user)
     }
     func enter(code: String? = nil) async throws {
         guard let api, let user else { return }
@@ -120,7 +138,15 @@ import Network
 }
 
 @MainActor @Observable final class RoomModel {
-    let code: String; let user: User; let api: APIClient
+    let code: String; private(set) var user: User; let api: APIClient
+    func updateProfileAvatar(_ filename: String?) {
+        user.avatar = filename
+        members = members.map { member in
+            var updated = member
+            if member.loginId == user.loginId { updated.avatar = filename }
+            return updated
+        }
+    }
     var members: [Member] = []; var connected = false; var ready = false
     var race: Race?; var clock: ClockMapping?; var syncing = false; var progress = 0
     var error = ""; var busy = false; var firing = false; var cue = ""; var pressed = false

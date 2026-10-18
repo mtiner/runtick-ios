@@ -310,3 +310,32 @@ extension NtpTests {
         XCTAssertThrowsError(try NtpQuality.select(slow))
     }
 }
+
+final class AvatarTests: XCTestCase {
+    func testRawSpacesBecomePercent20OnlyOnce() throws {
+        for filename in ["Nike Dragonfly.png", "adidas Adizero Prime SP 2.png", "New Balance FuelCell SuperComp MD-X.png", "PUMA evoSPEED Sprint Nitro 2.png"] {
+            let url=try XCTUnwrap(AvatarImageURL.make(filename))
+            XCTAssertTrue(url.absoluteString.contains("%20"))
+            XCTAssertFalse(url.absoluteString.contains("%2520"))
+            XCTAssertEqual(url.lastPathComponent,filename)
+            XCTAssertEqual(url.host,"download.runtick.cc")
+        }
+        XCTAssertEqual(AvatarImageURL.make("Nike Dragonfly.png")?.absoluteString,"https://download.runtick.cc/avatar/Nike%20Dragonfly.png")
+    }
+    func testUnexpectedPathsNeverBecomeRemoteImageURLs() {
+        for value in [nil,"",".png","../Nike Dragonfly.png","Nike%20Dragonfly.png","avatar/Nike Dragonfly.png","https://evil.example/a.png"] as [String?] {
+            XCTAssertNil(AvatarImageURL.make(value))
+        }
+    }
+    func testLegacyAndCurrentUserAndMemberDecode() throws {
+        let decoder=JSONDecoder()
+        let legacy=try decoder.decode(User.self,from:Data(#"{"id":1,"loginId":"runner"}"#.utf8))
+        XCTAssertNil(legacy.avatar)
+        let user=try decoder.decode(User.self,from:Data(#"{"id":1,"loginId":"runner","avatar":"Nike Dragonfly.png"}"#.utf8))
+        XCTAssertEqual(user.avatar,"Nike Dragonfly.png")
+        let restored=try decoder.decode(User.self,from:JSONEncoder().encode(user))
+        XCTAssertEqual(restored.avatar,user.avatar)
+        let member=try decoder.decode(Member.self,from:Data(#"{"loginId":"runner","deviceRole":"start","online":true,"avatar":"Nike Dragonfly.png"}"#.utf8))
+        XCTAssertEqual(member.avatar,user.avatar)
+    }
+}

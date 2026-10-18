@@ -170,5 +170,22 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
     func testTouchTimestampUsesEventClockRatherThanCallbackDelivery() {
         XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.001)
     }
+    func testAvatarSaveSendsRawFilenameAndRejectedSaveKeepsCurrentProfile() async throws {
+        var rejected = false
+        let client=api { request in
+            XCTAssertEqual(request.url?.path,"/api/auth/avatar")
+            XCTAssertEqual(request.httpMethod,"PATCH")
+            if rejected { return (400,#"{"ok":false,"error":{"code":"VALIDATION","message":"请选择图库头像"}}"#) }
+            return (200,#"{"ok":true,"data":{"user":{"id":71,"loginId":"runner","avatar":"Nike Dragonfly.png"}}}"#)
+        }
+        let app=AppModel(api:client); app.user=User(id:71,loginId:"runner")
+        try await app.updateAvatar("Nike Dragonfly.png")
+        XCTAssertEqual(app.user?.avatar,"Nike Dragonfly.png")
+        rejected=true
+        do { try await app.updateAvatar("Nike Maxfly 2.png"); XCTFail("Rejected save must fail") } catch {}
+        XCTAssertEqual(app.user?.avatar,"Nike Dragonfly.png")
+        app.clearSession()
+    }
+
 }
 #endif
