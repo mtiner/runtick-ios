@@ -12,7 +12,7 @@ final class RecordingNavigationTests: XCTestCase {
         XCTAssertTrue(resume.waitForExistence(timeout: 5)); XCTAssertTrue(resume.isHittable)
         XCTAssertTrue(app.buttons["退出房间"].firstMatch.exists)
         resume.tap(); XCTAssertTrue(back.waitForExistence(timeout: 5))
-        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); attachment.lifetime = .keepAlways; add(attachment)
     }
     @MainActor func testReturnFromStarterKeepsRoom() {
         let app = XCUIApplication(); app.launchArguments = ["--starter-preview"]; app.launch()
@@ -32,8 +32,11 @@ final class RecordingNavigationTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [rotated], timeout: 10), .completed)
         let back = app.buttons["recording.return"]
         XCTAssertTrue(back.waitForExistence(timeout: 5)); XCTAssertTrue(back.isHittable)
-        XCTAssertTrue(app.staticTexts["按住屏幕，等待冲线"].isHittable)
-        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "ipad-landscape-recording"; attachment.lifetime = .keepAlways; add(attachment)
+        let instruction = app.staticTexts["按住屏幕，等待冲线"]
+        XCTAssertTrue(instruction.exists)
+        XCTAssertGreaterThan(instruction.frame.height, 0)
+        XCTAssertTrue(app.windows.firstMatch.frame.contains(instruction.frame), "Instruction must stay inside the visible recording window")
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); attachment.name = "ipad-landscape-recording"; attachment.lifetime = .keepAlways; add(attachment)
     }
 
     @MainActor func testLargeTextStillAllowsReturnAndResume() {
@@ -42,7 +45,7 @@ final class RecordingNavigationTests: XCTestCase {
         app.launch()
         let back = app.buttons["recording.return"]
         XCTAssertTrue(back.waitForExistence(timeout: 10)); XCTAssertTrue(back.isHittable)
-        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "large-text-starter"; attachment.lifetime = .keepAlways; add(attachment)
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); attachment.name = "large-text-starter"; attachment.lifetime = .keepAlways; add(attachment)
         back.tap()
         let resume = app.buttons["room.resumeRecording"]
         if !resume.isHittable { app.swipeUp() }
