@@ -4,11 +4,21 @@ import Foundation
 @testable import RunTick
 
 private final class FlowProtocol: URLProtocol, @unchecked Sendable {
-    static var handler: ((URLRequest) -> (Int, String))?
+    private static let lock = NSLock()
+    private static var handlers: [String: (URLRequest) -> (Int, String)] = [:]
+    static func register(_ handler: @escaping (URLRequest) -> (Int, String)) -> String {
+        let id = UUID().uuidString
+        lock.lock(); defer { lock.unlock() }
+        handlers[id] = handler
+        return id
+    }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let (code, body) = Self.handler?(request) ?? (200, "{\"ok\":true,\"data\":{}}")
+        Self.lock.lock()
+        let handler = Self.handlers[request.value(forHTTPHeaderField: "X-Flow-Test-ID") ?? ""]
+        Self.lock.unlock()
+        let (code, body) = handler?(request) ?? (200, "{\"ok\":true,\"data\":{}}")
         let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
@@ -20,8 +30,8 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
 @MainActor final class AppFlowTests: XCTestCase {
     private let base = URL(string: "https://ios-flow-tests.invalid/")!
     private func api(_ handler: @escaping (URLRequest) -> (Int, String)) -> APIClient {
-        FlowProtocol.handler = handler
         let config = URLSessionConfiguration.ephemeral
+        config.httpAdditionalHeaders = ["X-Flow-Test-ID": FlowProtocol.register(handler)]
         config.protocolClasses = [FlowProtocol.self]
         return APIClient(baseURL: base, configuration: config)
     }
