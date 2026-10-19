@@ -193,7 +193,8 @@ import Network
             if initial { initial = false; return }
             Task { @MainActor in
                 guard let self, !self.stopped else { return }
-                self.needsResync = true; await self.calibrate()
+                self.needsResync = true
+                if self.clock?.fresh != true { await self.calibrate() }
             }
         }
         monitor.start(queue:DispatchQueue(label:"cc.runtick.network"))
@@ -235,7 +236,14 @@ import Network
     }
     func stop() { pathMonitor?.cancel(); pathMonitor = nil; stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
     func interrupt() { fireGeneration = UUID(); pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
-    func resume() { needsResync = true; if (race?.active != true || recordingClock == nil) { tasks.append(Task { await calibrate() }) }; socket?.sendPing { _ in } }
+    func resume() {
+        // Reopening the same room and transient inactive/active changes do not
+        // invalidate a valid monotonic-to-UTC mapping.
+        if clock?.fresh != true && (race?.active != true || recordingClock == nil) {
+            tasks.append(Task { await calibrate() })
+        }
+        socket?.sendPing { _ in }
+    }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
@@ -244,26 +252,25 @@ import Network
     var syncError = ""
     var syncDetail = ""
     var syncTarget: Int { AppTimeSync.target }
-    var syncProtocol: String { AppTimeSync.source == .suningHTTP ? "苏宁 HTTP" : "NTP" }
     private var needsResync = false
     private var pathMonitor: NWPathMonitor?
     var syncSummary: String {
-        if syncing { return "时间同步中 · \(progress)/\(syncTarget)" }
-        guard let value = recordingClock ?? clock else { return "时间同步失败 · 尚无可用时间基准" }
-        let state = !value.fresh ? "同步失败 · 映射已过期或不可靠" : (syncError.isEmpty ? (value.syncSource == "HTTP" ? "已同步 · HTTP 精度未验证" : "已同步") : "同步质量下降")
-        return "\(state) · \(value.server) · 年龄 \(Int(value.ageMs/1000))s · 估计不确定度 \(String(format:"%.1f",value.estimatedUncertaintyMs))ms"
+        if syncing { return "正在同步时间…" }
+        guard let value = recordingClock ?? clock else { return syncError.isEmpty ? "尚未同步时间" : "时间同步失败，请重试" }
+        if !value.fresh { return "时间同步已过期，请重新同步" }
+        return syncError.isEmpty ? "时间已同步" : "时间同步质量下降，请重新同步"
     }
     func calibrate(force: Bool = false) async {
         guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
         do {
-            do { if needsResync || force { AppTimeSync.invalidate() }; clock = try await AppTimeSync.synchronize(detail: { self.syncDetail = $0 }) { self.progress = $0 }; syncError = ""; needsResync = false }
+            do { if needsResync || force { AppTimeSync.invalidate() }; clock = try await AppTimeSync.synchronize(detail: { self.syncDetail = $0; print("RunTick time sync: \($0)") }) { self.progress = $0 }; syncError = ""; needsResync = false }
             catch {
                 guard allowHTTPFallback, !(error is CancellationError) else { throw error }
                 clock = try await httpFallback(); syncError = "主时间源不可用，使用应用 API HTTP 备用源"; needsResync = false
             }
             if let value = clock { print("RunTick sync server=\(value.server) samples=\(value.validSamples) RTT=\(value.averageRttMs) offset=\(value.offset) age=\(value.ageMs) estimatedUncertainty=\(value.estimatedUncertaintyMs)") }
             if race?.active == true && recordingClock == nil { recordingClock = clock }
-        } catch { if !(error is CancellationError) { syncError = error.localizedDescription; self.error = error.localizedDescription } }
+        } catch { if !(error is CancellationError) { syncError = error.localizedDescription; print("RunTick time sync failed: \(syncError)"); self.error = "时间同步失败，请检查网络后重试。" } }
     }
     private func httpFallback() async throws -> ClockMapping {
         var samples: [ClockSample] = []

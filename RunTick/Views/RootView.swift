@@ -211,14 +211,14 @@ struct AvatarPickerView: View {
                     if loading { ProgressView("加载头像图库…") }
                     if !error.isEmpty { Text(error).foregroundStyle(.red).font(.footnote) }
                     if avatars.isEmpty && !loading { Button("重新加载") { Task { await load() } } }
-                    LazyVGrid(columns:[GridItem(.adaptive(minimum:140))],spacing:16) {
+                    LazyVGrid(columns:Array(repeating:GridItem(.flexible(minimum:0),spacing:8),count:4),spacing:16) {
                         ForEach(avatars) { item in
                             Button { selected = item.filename } label: {
                                 VStack(spacing:8) {
-                                    UserAvatarView(filename:item.filename,name:"头像",size:80)
+                                    UserAvatarView(filename:item.filename,name:"头像",size:56)
                                     Text(item.title).font(.caption).foregroundStyle(RT.ink).multilineTextAlignment(.center)
                                     Image(systemName:selected == item.filename ? "checkmark.circle.fill" : "circle").foregroundStyle(RT.deep)
-                                }.frame(maxWidth:.infinity).padding(10)
+                                }.frame(maxWidth:.infinity).padding(4)
                                     .background(selected == item.filename ? RT.aqua.opacity(0.18) : Color.clear,in:RoundedRectangle(cornerRadius:16))
                             }.buttonStyle(.plain).disabled(saving).accessibilityLabel(item.title).accessibilityAddTraits(selected == item.filename ? .isSelected : [])
                         }

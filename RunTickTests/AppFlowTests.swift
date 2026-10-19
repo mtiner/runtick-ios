@@ -187,5 +187,23 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         app.clearSession()
     }
 
+    func testRepeatedRoomResumeReusesFreshMappingAndStatusHidesDiagnostics() async {
+        let client=api { _ in (200,"{\"ok\":true,\"data\":{}}") }
+        let room=RoomModel(code:"4932",user:User(id:71,loginId:"runner"),api:client)
+        defer { room.stop() }
+        var mapping=ClockMapping(offset:1,uncertaintyMs:2,averageRttMs:2,sampledAt:MonotonicClock.now()/1000)
+        mapping.server="f.m.suning.com"; mapping.validSamples=8
+        room.clock=mapping
+        for _ in 0..<3 { room.resume() }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertFalse(room.syncing)
+        XCTAssertTrue(room.syncDetail.isEmpty, "A fresh mapping must not start a new sampling round")
+        XCTAssertEqual(room.syncSummary,"时间已同步")
+        room.syncError="f.m.suning.com RTT rejected"
+        XCTAssertEqual(room.syncSummary,"时间同步质量下降，请重新同步")
+        room.clock=ClockMapping(offset:1,uncertaintyMs:2,averageRttMs:2,sampledAt:(MonotonicClock.now()-121000)/1000)
+        XCTAssertEqual(room.syncSummary,"时间同步已过期，请重新同步")
+    }
+
 }
 #endif

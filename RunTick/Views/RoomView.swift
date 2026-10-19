@@ -14,14 +14,12 @@ struct RoomView: View {
     var body: some View {
         RTPage {
             RTBrand(onExit: requestExit, exiting: model.busy).rtEntrance()
-            TimeSyncStatus(model: model)
             RTHero(badge: "房间 \(model.code)", title: model.race?.status == "completed" ? "本次成绩" : model.race?.active == true ? (model.raceRole == .start ? "起跑发令" : "终点记录") : "房间准备", subtitle: "准备好，就出发。").rtEntrance(0.04)
             if model.race?.active != true {
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "network" : "network.slash")
-                if model.syncing { ProgressView("\(model.syncProtocol) 校时 \(model.progress)/\(model.syncTarget)", value: Double(model.progress), total: Double(model.syncTarget)) }
-                else if let clock = model.clock { Text("\(clock.syncSource) \(clock.server) · \(clock.validSamples) 样本 · RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.estimatedUncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
-                if !model.syncDetail.isEmpty { Text(model.syncDetail).font(.footnote).foregroundStyle(RT.muted).accessibilityIdentifier("timeSync.detail") }
+                if model.syncing { ProgressView("正在同步时间…", value: Double(model.progress), total: Double(model.syncTarget)) }
+                else { TimeSyncStatus(model: model) }
                 Button("重新校准时间") { Task { await model.calibrate(force: true) } }.disabled(model.syncing || model.firing || model.pressed)
             }
             }
@@ -188,7 +186,7 @@ struct FinishPad: View {
             } }.padding()
         }.animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.pressed).sensoryFeedback(.impact(weight: .light), trigger: model.pressed).foregroundStyle(Color(red: 0.07, green: 0.24, blue: 0.23))
             .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 2) { RecordingHeader(name: model.user.loginId, code: model.code) { model.cancelPress(); leave() }; TimeSyncStatus(model:model) }
+                VStack(spacing: 2) { RecordingHeader(name: model.user.loginId, code: model.code) { model.cancelPress(); leave() } }
             }
             .onChange(of: phase) { _, phase in if phase != .active { model.cancelPress() } }
             .onDisappear { model.cancelPress() }
