@@ -18,8 +18,8 @@ struct RoomView: View {
             if model.race?.active != true {
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "network" : "network.slash")
-                if model.syncing { ProgressView("正在同步时间…", value: Double(model.progress), total: Double(model.syncTarget)) }
-                else { TimeSyncStatus(model: model) }
+                TimeSyncStatus(model:model)
+                if model.syncing { ProgressView(value:Double(model.progress),total:Double(model.syncTarget)) }
                 Button("重新校准时间") { Task { await model.calibrate(force: true) } }.disabled(model.syncing || model.firing || model.pressed)
             }
             }
@@ -44,11 +44,19 @@ struct RoomView: View {
                 }.rtEntrance(0.08)
                 RTCard("房间成员（\(model.members.count)/2）") { ForEach(model.members) { member in HStack {
                     UserAvatarView(filename:member.avatar,name:member.loginId,size:36)
-                    Text(member.loginId); Spacer(); Text("\(model.displayedRole(for: member)?.title ?? "同步中") · \(member.online == true ? "在线" : "离线")").foregroundStyle(.secondary) } } }
+                    Text(member.loginId); Spacer()
+                    Image(systemName:model.displayedRole(for:member) == .start ? "figure.run" : "flag.checkered")
+                        .foregroundStyle(member.online == true ? .teal : .gray)
+                        .padding(10).background((member.online == true ? Color.teal : Color.gray).opacity(0.12),in:Circle())
+                        .shadow(color:member.online == true ? .teal.opacity(0.4) : .clear,radius:6)
+                        .accessibilityLabel("\(model.displayedRole(for:member)?.title ?? "未分配角色")，\(member.online == true ? "在线" : "离线")") } } }
             }
             if let race = model.race { raceRTCard(race).id(race.id).rtEntrance(0.08) }
             if model.role != nil && model.race?.active != true && model.race?.status != "completed" {
-                Button("开始记录") { soundCheck = true }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock?.fresh != true || model.syncing || model.busy)
+                Button("开始记录") { Task { await model.beginRecording() } }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock?.fresh != true || model.syncing || model.busy)
+            }
+            if model.race?.active != true {
+                Button("房间发令设置") { model.editingSettings = true; soundCheck = true }.disabled(model.busy)
             }
             if let pending = model.pending { RTCard("计时记录待同步") { Text("\(pending.event.kind == .start ? "起点" : "终点")计时已保存在此设备上，联网后将自动重试同步。"); Button("重新同步") { Task { await model.submit() } }.disabled(model.submitting) } }
             NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code) }
@@ -70,18 +78,19 @@ struct RoomView: View {
             if visible && soundCheck { soundCheck = false }
             else { recording = visible }
         }
-        .sheet(isPresented: $soundCheck, onDismiss: { recording = recordingVisible }) {
+        .sheet(isPresented: $soundCheck, onDismiss: { model.editingSettings = false; recording = recordingVisible }) {
             NavigationStack {
                 RTPage {
-                    Text("房间 \(model.code) · 确认后双端进入记录页面").font(.subheadline).foregroundStyle(RT.muted)
+                    Text("房间 \(model.code) · 设置将用于后续每轮训练").font(.subheadline).foregroundStyle(RT.muted)
                     RTCard("发令时间") {
                         Toggle("检测起跑反应时", isOn: Binding(get: { model.stages[0].reactionEnabled == true }, set: { model.stages[0].reactionEnabled = $0 }))
                         Text("有起跑器并固定手机后开启；三点式起跑可关闭，不影响发令或跑步成绩。").font(.footnote).foregroundStyle(RT.muted)
                         Toggle("播放各就位口令", isOn: Binding(get: { model.stages[0].enabled != false }, set: { model.stages[0].enabled = $0 }))
+                        Toggle("播放预备口令", isOn: Binding(get:{model.stages[1].enabled != false},set:{model.stages[1].enabled=$0}))
                         Text("将起点手机贴靠或固定在起跑器上，并保持稳定，以检测起跑反应。结果为设备运动估算。").font(.footnote).foregroundStyle(RT.muted)
                         ForEach(0..<3, id: \.self) { i in
-                            if i != 0 || model.stages[0].enabled != false {
-                                StageDelayControl(title: ["开始 → 各就位", model.stages[0].enabled == false ? "开始 → 预备" : "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
+                            if i == 2 || model.stages[i].enabled != false {
+                                StageDelayControl(title: ["开始 → 各就位", model.stages[0].enabled == false ? "开始 → 预备" : "各就位结束 → 预备", model.stages[1].enabled != false ? "预备结束 → 枪声" : (model.stages[0].enabled != false ? "各就位结束 → 枪声" : "开始 → 枪声")][i], stage: $model.stages[i])
                             }
                         }
                     }.disabled(model.busy)
@@ -89,8 +98,8 @@ struct RoomView: View {
                     else { Text("请确认起点手机的媒体音量已调至最大，并使用扬声器播放发令声音。").font(.footnote).foregroundStyle(RT.muted) }
                 }.safeAreaInset(edge: .bottom) {
                     VStack(spacing: 12) {
-                        Button(model.busy ? "正在开始…" : "确认并开始记录") {
-                            Task { await model.beginRecording() }
+                        Button(model.busy ? "正在保存…" : "保存设置") {
+                            Task { await model.action { try await model.saveRoomSettings(); soundCheck = false; model.editingSettings = false } }
                         }.buttonStyle(RTButtonStyle()).disabled(model.busy || !model.stages.allSatisfy(\.valid))
                         Button("返回准备") { soundCheck = false }.font(.subheadline).disabled(model.busy)
                     }.padding(.horizontal, 24).padding(.vertical, 14).background(.ultraThinMaterial)
@@ -140,6 +149,9 @@ struct RoomView: View {
                     ScrollView(.horizontal) { HStack { ForEach([20,30,40,50,60,80,100,120,150,200,300,400,800,1500], id: \.self) { value in Button("\(value)") { distance = String(value) }.buttonStyle(.bordered) } } }
                     Button("保存成绩") { Task { await model.save(distance: Int(distance) ?? 0) } }.buttonStyle(RTButtonStyle()).disabled(model.busy)
                 } else { Text("等待终点记录员填写距离并保存") }
+                if race.savedResult == nil {
+                    Button("放弃保存本轮成绩",role:.destructive) { Task { await model.raceAction("discard") } }.disabled(model.busy)
+                }
             } else if race.active {
                 if model.clock == nil {
                     if model.syncing { ProgressView("正在校时…") }
@@ -164,33 +176,27 @@ struct FinishPad: View {
     let leave: () -> Void
     @Environment(\.scenePhase) private var phase
     var body: some View {
-        ZStack {
-            (model.pressed ? Color(red: 0.72, green: 0.93, blue: 0.47) : Color(red: 0.40, green: 0.86, blue: 0.83)).ignoresSafeArea()
-            GeometryReader { geometry in
-            VStack(spacing: min(24, geometry.size.height * 0.035)) {
-                Spacer()
+        GeometryReader { geometry in
+            VStack(spacing:0) {
+                TimelineView(.periodic(from:.now,by:0.05)) { _ in
+                    Text(model.stageText()).font(.system(size:44,weight:.bold)).multilineTextAlignment(.center)
+                        .frame(maxWidth:.infinity).frame(height:geometry.size.height/2).background(RT.aqua.opacity(0.18))
+                }
                 ZStack {
-                    Circle().stroke(.white.opacity(0.25), lineWidth: 1).frame(width: min(180, geometry.size.height * 0.25), height: min(180, geometry.size.height * 0.25))
-                    Circle().stroke(.white.opacity(0.45), lineWidth: 2).frame(width: model.pressed ? 130 : 110, height: model.pressed ? 130 : 110)
-                    Image(systemName: "hand.point.up.fill").font(.system(size: 64, weight: .light)).symbolEffect(.pulse, options: .repeating, isActive: model.pressed && !reduceMotion)
-                }.animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.65), value: model.pressed)
-                Text(model.pressed ? "冲线时松手" : "按住屏幕，等待冲线").font(.system(size: min(32, geometry.size.height * 0.055), weight: .bold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.65)
-                Text(model.race?.startAt == nil ? "可以提前按住 · 等待枪声" : "计时中 · 松开记录")
-                Text("取消触控不会记录成绩").font(.footnote)
-                Spacer()
-            }.padding(.bottom, 30).frame(maxWidth: .infinity, minHeight: geometry.size.height)
-            }.allowsHitTesting(false)
-            TouchCapture(onDown: { model.press() }, onUp: { model.release(at: $0) }, onCancel: { model.cancelPress() }).padding(.top, 100)
-            VStack { Spacer(); TimelineView(.periodic(from: .now, by: 1)) { _ in
-                if !model.hasRecordingClock { Button(model.syncing ? "正在校时…" : "重新校时") { Task { await model.calibrate(force: true) } }.buttonStyle(.glass).disabled(model.syncing) }
-            } }.padding()
-        }.animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.pressed).sensoryFeedback(.impact(weight: .light), trigger: model.pressed).foregroundStyle(Color(red: 0.07, green: 0.24, blue: 0.23))
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 2) { RecordingHeader(name: model.user.loginId, code: model.code) { model.cancelPress(); leave() } }
+                    (model.pressed ? Color(red:0.72,green:0.93,blue:0.47) : Color(red:0.4,green:0.86,blue:0.83))
+                    VStack(spacing:14) {
+                        Image(systemName:"hand.point.up.fill").font(.system(size:44))
+                        Text(model.pressed ? "冲线时松手" : "按住屏幕，等待冲线").font(.title2.bold())
+                        Text("可以提前按住 · 冲线时松开").font(.footnote)
+                    }.allowsHitTesting(false)
+                    TouchCapture(onDown:{model.press()},onUp:{model.release(at:$0)},onCancel:{model.cancelPress()})
+                }.frame(height:geometry.size.height/2)
             }
-            .onChange(of: phase) { _, phase in if phase != .active { model.cancelPress() } }
-            .onDisappear { model.cancelPress() }
-            .rtErrorAlert($model.error)
+        }
+        .safeAreaInset(edge:.top) { RecordingHeader(name:model.user.loginId,code:model.code) { model.cancelPress(); leave() } }
+        .onChange(of:phase) { _,phase in if phase != .active { model.cancelPress() } }
+        .onDisappear { model.cancelPress() }
+        .rtErrorAlert($model.error)
     }
 }
 struct TouchCapture: UIViewRepresentable {
@@ -217,6 +223,15 @@ struct TouchCapture: UIViewRepresentable {
 struct TimeSyncStatus: View {
     @Bindable var model: RoomModel
     var body: some View {
-        TimelineView(.periodic(from:.now,by:1)) { _ in Text(model.syncSummary).font(.caption).foregroundStyle(RT.muted).accessibilityLabel(model.syncSummary) }
+        TimelineView(.periodic(from:.now,by:1)) { _ in
+            VStack(alignment:.leading,spacing:4) {
+                Text(model.syncSummary).font(.caption).foregroundStyle(RT.muted)
+                if model.syncing {
+                    Text("此次 RTT \(model.latestSyncRtt.map { String(format:"%.1f ms",$0) } ?? "—") · 平均 RTT \(model.averageSyncRtt.map { String(format:"%.1f ms",$0) } ?? "—")").font(.caption).foregroundStyle(RT.muted)
+                } else if let rtt=model.averageSyncRtt ?? model.clock?.averageRttMs {
+                    Text("平均 RTT \(rtt,specifier:"%.1f") ms").font(.caption).foregroundStyle(RT.muted)
+                }
+            }
+        }
     }
 }

@@ -185,6 +185,17 @@ final class TimingTests: XCTestCase {
         XCTAssertEqual(decoded.event.at, pending.event.at)
         XCTAssertEqual(decoded.code, "0123")
     }
+    func testExplicitHistoryDeletionCanClearSavedResult() throws {
+        let json = "{\"id\":\"r\",\"status\":\"completed\",\"createdAt\":1,\"startAt\":10,\"finishAt\":20,\"startUserId\":1,\"finishUserId\":2}"
+        var saved = try JSONDecoder().decode(Race.self, from: Data(json.utf8))
+        saved.savedResult = SavedResult(distance: 100, isPb: true, pbImprovementMs: nil)
+        var deleted = saved
+        deleted.savedResult = nil
+        XCTAssertFalse(saved.accepts(deleted))
+        deleted.discarded = true
+        deleted = try JSONDecoder().decode(Race.self, from: JSONEncoder().encode(deleted))
+        XCTAssertTrue(saved.accepts(deleted))
+    }
     func testLatePollCannotUndoCompletedRace() throws {
         func race(_ status: String, _ start: String, _ finish: String) throws -> Race {
             let json = "{\"id\":\"r\",\"status\":\"\(status)\",\"createdAt\":1,\"startAt\":\(start),\"finishAt\":\(finish),\"startUserId\":1,\"finishUserId\":2}"

@@ -72,6 +72,8 @@ enum SuningTimeProtocol {
 @MainActor final class SuningTimeClient {
     static let shared = SuningTimeClient()
     var configuration = SuningTimeConfiguration()
+    private(set) var latestRTT: Double?
+    private(set) var averageRTT: Double?
     private(set) var latest: ClockMapping?
     private var stale = false
     private var generation = 0
@@ -111,6 +113,7 @@ enum SuningTimeProtocol {
         let config = configuration
         guard MonotonicClock.now() >= blockedUntil else { throw HTTPTimeRateLimit(delayMs:blockedUntil-MonotonicClock.now()) }
         guard config.validSamples >= 3, config.maxAttempts >= config.validSamples, config.intervalMs >= 0, config.timeoutMs > 0, config.maxRttMs > 0, config.maxSpreadMs >= 0, config.maximumAgeMs > 0, config.maximumUncertaintyMs > 0, config.endpoint.scheme == "https" else { throw ClientError.message("HTTP 校时配置无效") }
+        latestRTT=nil; averageRTT=nil
         var samples: [HTTPTimeSample] = []; var lastTimestamp: Double?; var lastError = ""
         for attempt in 0..<config.maxAttempts {
             try Task.checkCancellation()
@@ -119,9 +122,11 @@ enum SuningTimeProtocol {
             do {
                 let sample: HTTPTimeSample
                 if let exchange { sample = try await exchange() } else { sample = try await request(config) }
+                latestRTT=sample.rtt
                 guard sample.rtt >= 0, sample.rtt <= config.maxRttMs, sample.offset.isFinite,
                       lastTimestamp == nil || sample.serverUTC > lastTimestamp! else { throw ClientError.message("延迟超标或服务器时间未推进") }
                 lastTimestamp = sample.serverUTC; samples.append(sample)
+                averageRTT=samples.map(\.rtt).reduce(0,+)/Double(samples.count)
                 report(min(samples.count,config.validSamples), "苏宁 HTTP · RTT \(String(format:"%.1f",sample.rtt)) ms · Offset \(String(format:"%.1f",sample.offset)) ms")
                 if samples.count >= config.validSamples {
                     let mapping = try SuningTimeProtocol.select(Array(samples.suffix(config.validSamples)),config:config)

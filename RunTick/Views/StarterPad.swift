@@ -40,7 +40,7 @@ struct StarterPad: View {
             }
         }.foregroundStyle(RT.ink)
             .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing:2) { RecordingHeader(name: model.user.loginId, code: model.code, leave: leave); TimeSyncStatus(model:model) }
+                VStack(spacing:2) { RecordingHeader(name: model.user.loginId, code: model.code, leave: leave) }
             }
             .task(id: "\(model.race?.id ?? ""):\(model.race?.starterSettings != nil)") {
                 // Preview renders must never play audio or send timing events.
@@ -48,12 +48,6 @@ struct StarterPad: View {
                 if ProcessInfo.processInfo.arguments.contains("--starter-preview") { return }
                 #endif
                 await model.autoFire()
-            }
-            .alert("媒体音量未调至最大", isPresented: $model.volumeConfirmationPending) {
-                Button("先调整音量", role: .cancel) {}
-                Button("仍然开始") { Task { await model.fire(allowReducedVolume: true) } }
-            } message: {
-                Text("建议将媒体音量调至最大，以便清楚听到口令和枪声。也可以按当前音量继续发令，包括音量为零时。")
             }
             .onDisappear { model.interrupt() }
             .rtErrorAlert($model.error, enabled: !model.volumeConfirmationPending)

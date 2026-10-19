@@ -14,17 +14,21 @@ struct Member: Decodable, Identifiable {
 struct RoomDetail: Decodable { let room: Room; let ownerLoginId: String; let members: [Member] }
 struct HubState: Decodable { let type: String; let members: [Member]?; let ready: Bool? }
 struct SavedResult: Codable { let distance: Int; let isPb: Bool; let pbImprovementMs: Double? }
+struct CuePoint: Codable, Equatable { let stage: Int; let at: Double }
+struct RoomPoll: Decodable { let members: [Member]; let ready: Bool; let starterSettings: [StageDelay]; let race: Race? }
 struct Race: Codable, Identifiable {
     let id: String; let status: String; let createdAt: Double
     let startAt: Double?; let finishAt: Double?; let elapsedMs: Double?; let uncertaintyMs: Double?
     let startUserId: Int; let finishUserId: Int; var savedResult: SavedResult?
+    var discarded: Bool? = nil
+    var cueTimeline: [CuePoint]? = nil
     var starterSettings: [StageDelay]? = nil
     var reactionMs: Double? = nil; var reactionStatus: String? = nil
     var active: Bool { status == "ready" || status == "running" }
     func accepts(_ newer: Race) -> Bool {
         guard newer.createdAt >= createdAt else { return false }
         guard newer.id == id else { return true }
-        return !(!active && newer.active) && !(savedResult != nil && newer.savedResult == nil)
+        return !(!active && newer.active) && !(savedResult != nil && newer.savedResult == nil && newer.discarded != true)
             && !(startAt != nil && newer.startAt == nil) && !(finishAt != nil && newer.finishAt == nil)
     }
 }
@@ -43,7 +47,7 @@ struct HistoryRecord: Codable, Identifiable {
     var reactionMs: Double? = nil; var reactionStatus: String? = nil
 }
 struct TrendPoint: Decodable, Identifiable { var id: String { raceId }; let raceId: String; let elapsedMs: Double; let performedAt: Double }
-struct HistoryData: Decodable { let trend: [TrendPoint]; let athletes: [User]; let athleteId: Int; let distances: [Int]; let records: [HistoryRecord]; let hasMore: Bool }
+struct HistoryData: Decodable { let trend: [TrendPoint]; let athletes: [User]; let athleteId: Int; let distances: [Int]; let records: [HistoryRecord]; let hasMore: Bool; var nextCursor: String? = nil }
 struct UserResponse: Decodable { let user: User }
 struct RoomResponse: Decodable { let room: Room }
 struct RaceResponse: Decodable { let race: Race? }

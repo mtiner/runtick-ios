@@ -73,12 +73,4 @@ private struct Envelope<T: Decodable>: Decodable {
         sessionStore.clear()
         for cookie in HTTPCookieStorage.shared.cookies(for: baseURL) ?? [] { HTTPCookieStorage.shared.deleteCookie(cookie) }
     }
-    func socketRequest(code: String) -> URLRequest {
-        var parts = URLComponents(url: url("/api/rooms/\(code)/ws"), resolvingAgainstBaseURL: false)!
-        parts.scheme = baseURL.scheme == "https" ? "wss" : "ws"
-        var request = URLRequest(url: parts.url!)
-        let cookies = HTTPCookieStorage.shared.cookies(for: baseURL) ?? []
-        for (key, value) in HTTPCookie.requestHeaderFields(with: cookies) { request.setValue(value, forHTTPHeaderField: key) }
-        return request
-    }
 }

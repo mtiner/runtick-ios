@@ -10,7 +10,6 @@ import Network
     var room: RoomModel?
     var syncNotice = ""
     private var syncTask: Task<Void, Never>?
-    private var resolvingRoom = false
     private var syncGeneration = UUID()
     private var profileRevision = UUID()
     private let injectedClient: Bool
@@ -33,7 +32,7 @@ import Network
             try self.configure()
             do {
                 let result: UserResponse = try await self.api!.request("/api/auth/me")
-                self.user = result.user; try self.api!.remember(result.user); try await self.openCurrentRoom(); self.scheduleSync()
+                self.user = result.user; try self.api!.remember(result.user); self.lobbyReady = true; self.scheduleSync()
             } catch let error as ClientError where error.status == 401 {
                 // No saved session on a fresh install is expected, not a connection failure.
                 return
@@ -49,7 +48,7 @@ import Network
         guard !id.trimmingCharacters(in: .whitespaces).isEmpty, !password.isEmpty else { throw ClientError.message("请输入用户 ID 和密码") }
         try configure(reset: true)
         let result: UserResponse = try await api!.request("/api/auth/login", method: "POST", body: ["userId": id, "password": password])
-        user = result.user; try api!.remember(result.user); try await openCurrentRoom(); scheduleSync()
+        user = result.user; try api!.remember(result.user); lobbyReady = true; scheduleSync()
     }
     func updateAvatar(_ filename: String) async throws {
         guard let client = api, let current = user else { throw ClientError.message("请先登录") }
@@ -79,21 +78,8 @@ import Network
     }
     /// Match the H5 room tab: resolve membership without leaving a live room.
     func openCurrentRoom() async throws {
-        guard let api, let user else { return }
-        guard !resolvingRoom else { return }
-        resolvingRoom = true
-        defer { resolvingRoom = false }
-        let result: CurrentRoomResponse = try await api.request("/api/rooms/current")
-        try Task.checkCancellation()
-        guard self.user?.id == user.id, self.api === api else { throw CancellationError() }
-        if let current = result.room {
-            guard room?.code != current.code else { room?.resume(); return }
-            room?.stop()
-            let model = RoomModel(code: current.code, user: user, api: api)
-            room = model; lobbyReady = false; model.start()
-        } else {
-            room?.stop(); room = nil; lobbyReady = true
-        }
+        // A login session never implicitly restores room membership on cold launch.
+        if let room { room.resume() } else { lobbyReady = true }
     }
     var syncingRecords: Bool { syncTask != nil }
     func scheduleSync(showConfirmation: Bool = false) {
@@ -162,9 +148,7 @@ import Network
     private var audio = StarterAudio()
     private var reactionMotion = ReactionMotion()
     private var eventClock: ClockMapping?
-    private var socket: URLSessionWebSocketTask?
     private var stopped = false
-    private var receivedRoomState = false
     private var autoRetry = true
     private var retryAfter: Double = 0
     private(set) var roleSelection = RoleSelection()
@@ -199,22 +183,20 @@ import Network
         }
         monitor.start(queue:DispatchQueue(label:"cc.runtick.network"))
         tasks.append(Task {
-            do { let detail: RoomDetail = try await api.request("/api/rooms/\(code)"); if !receivedRoomState { members = detail.members } } catch { self.error = error.localizedDescription }
-            while !Task.isCancelled {
+            while !Task.isCancelled && !stopped {
                 do {
-                    let result: RaceResponse = try await api.request("/api/rooms/\(code)/races")
-                    if let race = result.race { update(race) }
+                    let state: RoomPoll = try await api.request("/api/rooms/\(code)/state",method:"POST")
+                    connected = true; members = state.members; ready = state.ready
+                    roleSelection.receivedServerState(serverRole:serverRole)
+                    if let value = state.race { update(value) }
                     else { archivePendingFromPreviousRound() }
+                    if race?.active != true && !busy && !editingSettings { stages = state.starterSettings }
                     if pending != nil && autoRetry && ProcessInfo.processInfo.systemUptime >= retryAfter { await submit() }
-                } catch is CancellationError { break } catch {
-                    let status = (error as? ClientError)?.status ?? 0
-                    // A temporary transport failure must not interrupt local timing.
-                    if !(race?.active == true && clock != nil && (status == 0 || status >= 500)) { self.error = error.localizedDescription }
-                }
-                do { try await Task.sleep(for: .seconds(1)) } catch { break }
+                } catch is CancellationError { break }
+                catch { connected = false; ready = false; print("RunTick room poll: \(error.localizedDescription)") }
+                do { try await Task.sleep(for:.milliseconds(connected ? (race?.active == true ? 500 : 1000) : 3000)) } catch { break }
             }
         })
-        tasks.append(Task { await socketLoop() })
     }
     func update(_ value: Race) {
         var value = value
@@ -234,7 +216,7 @@ import Network
         }
         pending = nil
     }
-    func stop() { pathMonitor?.cancel(); pathMonitor = nil; stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); socket?.cancel(with: .goingAway, reason: nil); socket = nil; connected = false; interrupt() }
+    func stop() { pathMonitor?.cancel(); pathMonitor = nil; stopped = true; tasks.forEach { $0.cancel() }; tasks.removeAll(); connected = false; interrupt() }
     func interrupt() { fireGeneration = UUID(); pressed = false; eventClock = nil; audio.stop(); reactionMotion.end(status: race?.status == "completed" ? "timeout" : "cancelled"); firing = false; volumeConfirmationPending = false; cue = ""; cueDeadline = nil }
     func resume() {
         // Reopening the same room and transient inactive/active changes do not
@@ -242,20 +224,23 @@ import Network
         if clock?.fresh != true && (race?.active != true || recordingClock == nil) {
             tasks.append(Task { await calibrate() })
         }
-        socket?.sendPing { _ in }
+
     }
     func action(_ body: () async throws -> Void) async {
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
+    var editingSettings = false
     var allowHTTPFallback = false
     var syncError = ""
     var syncDetail = ""
+    var latestSyncRtt: Double?
+    var averageSyncRtt: Double?
     var syncTarget: Int { AppTimeSync.target }
     private var needsResync = false
     private var pathMonitor: NWPathMonitor?
     var syncSummary: String {
-        if syncing { return "正在同步时间…" }
+        if syncing { return "正在校准 \(progress)/\(syncTarget)" }
         guard let value = recordingClock ?? clock else { return syncError.isEmpty ? "尚未同步时间" : "时间同步失败，请重试" }
         if !value.fresh { return "时间同步已过期，请重新同步" }
         return syncError.isEmpty ? "时间已同步" : "时间同步质量下降，请重新同步"
@@ -263,12 +248,12 @@ import Network
     func calibrate(force: Bool = false) async {
         guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
         do {
-            do { if needsResync || force { AppTimeSync.invalidate() }; clock = try await AppTimeSync.synchronize(detail: { self.syncDetail = $0; print("RunTick time sync: \($0)") }) { self.progress = $0 }; syncError = ""; needsResync = false }
+            do { if needsResync || force { AppTimeSync.invalidate() }; clock = try await AppTimeSync.synchronize(detail: { self.syncDetail = $0; self.latestSyncRtt = SuningTimeClient.shared.latestRTT; self.averageSyncRtt = SuningTimeClient.shared.averageRTT; print("RunTick time sync: \($0)") }) { self.progress = $0 }; syncError = ""; needsResync = false }
             catch {
                 guard allowHTTPFallback, !(error is CancellationError) else { throw error }
                 clock = try await httpFallback(); syncError = "主时间源不可用，使用应用 API HTTP 备用源"; needsResync = false
             }
-            if let value = clock { print("RunTick sync server=\(value.server) samples=\(value.validSamples) RTT=\(value.averageRttMs) offset=\(value.offset) age=\(value.ageMs) estimatedUncertainty=\(value.estimatedUncertaintyMs)") }
+            if let value = clock { latestSyncRtt = SuningTimeClient.shared.latestRTT ?? value.averageRttMs; averageSyncRtt = SuningTimeClient.shared.averageRTT ?? value.averageRttMs; print("RunTick sync server=\(value.server) samples=\(value.validSamples) RTT=\(value.averageRttMs) offset=\(value.offset) age=\(value.ageMs) estimatedUncertainty=\(value.estimatedUncertaintyMs)") }
             if race?.active == true && recordingClock == nil { recordingClock = clock }
         } catch { if !(error is CancellationError) { syncError = error.localizedDescription; print("RunTick time sync failed: \(syncError)"); self.error = "时间同步失败，请检查网络后重试。" } }
     }
@@ -306,7 +291,7 @@ import Network
             }
             if stopped { return }
         }
-        try? await socket?.send(.string("{\"type\":\"sync\"}"))
+
     }
     func raceAction(_ suffix: String = "") async {
         await action {
@@ -316,6 +301,17 @@ import Network
             if let race = result.race { update(race) }
         }
     }
+    func saveRoomSettings() async throws {
+        let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
+        let _: EmptyResponse = try await api.request("/api/rooms/\(code)/settings",method:"PUT",body:["starterSettings":body])
+    }
+    func stageText(at now: Double = MonotonicClock.now()) -> String {
+        if race?.startAt != nil { return "计时中" }
+        guard let clock = recordingClock ?? clock, let points = race?.cueTimeline else { return "等待发令" }
+        let utc=clock.utcAt(now)
+        guard let point=points.last(where:{$0.at<=utc}) else { return "等待发令" }
+        return ["各就各位","预备","枪声"][min(2,max(0,point.stage))]
+    }
     func beginRecording() async {
         guard pending == nil else { error = "上一轮计时记录尚未同步，请重新同步后再开始。"; return }
         if needsResync || clock?.fresh != true { await calibrate() }
@@ -323,8 +319,7 @@ import Network
             error = roleSaving ? "角色正在后台同步，请稍后开始记录。" : "请等待两端就绪并完成校时，再开始记录。"; return
         }
         await action {
-            let settings = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
-            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races", method: "POST", body: ["starterSettings": settings])
+            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races", method: "POST")
             if let race = result.race {
                 guard race.starterSettings != nil else { throw ClientError.message("发令设置暂时未能同步，请返回房间重试。") }
                 update(race)
@@ -353,17 +348,12 @@ import Network
         defer { if fireGeneration == token { firing = false; cueDeadline = nil } }
         do {
             // Both local and remote starts ask on the phone that actually plays the cues.
-            if !allowReducedVolume {
-                if try audio.needsVolumeConfirmation() {
-                    volumeConfirmationPending = true
-                    return
-                }
-            }
+
             cue = "请保持手机与起跑器稳定…"
             try await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
             try Task.checkCancellation()
             guard fireGeneration == token, !stopped, race?.id == raceId, race?.active == true else { return }
-            try await audio.play(settings: stages, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in
+            try await audio.play(settings: stages, scheduledTimes: race?.cueTimeline?.map { point in let now=MonotonicClock.now(); return now + point.at - snapshot.utcAt(now) }, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in
                 guard self.fireGeneration == token, self.race?.id == raceId else { return }
                 self.capture(.start, at: at, clock: snapshot, extra: extra)
                 guard let raceId = self.race?.id else { return }
@@ -432,27 +422,6 @@ import Network
             guard var value = self.race, value.id == race.id else { return }
             value.savedResult = SavedResult(distance: result.result.distance, isPb: result.result.isPb, pbImprovementMs: result.result.pbImprovementMs)
             update(value)
-        }
-    }
-    private func socketLoop() async {
-        var retry = 0
-        while !Task.isCancelled && !stopped {
-            let ws = api.session.webSocketTask(with: api.socketRequest(code: code)); socket = ws; ws.resume()
-            let heartbeat = Task { while !Task.isCancelled { do { try await Task.sleep(for: .seconds(30)); try await ws.send(.string("{\"type\":\"ping\"}")) } catch { break } } }
-            do {
-                try await ws.send(.string("{\"type\":\"sync\"}"))
-                while !Task.isCancelled {
-                    let message = try await ws.receive()
-                    let data: Data
-                    switch message { case .string(let text): data = Data(text.utf8); case .data(let bytes): data = bytes; @unknown default: continue }
-                    guard let event = try? JSONDecoder().decode(HubState.self, from: data), event.type == "state" else { continue }
-                    connected = true; retry = 0; receivedRoomState = true; members = event.members ?? []; roleSelection.receivedServerState(serverRole: serverRole); ready = event.ready ?? false
-                }
-            } catch { connected = false; ready = false }
-            heartbeat.cancel(); ws.cancel(with: .goingAway, reason: nil)
-            if Task.isCancelled || stopped { break }
-            retry += 1
-            do { try await Task.sleep(for: .seconds(min(pow(2, Double(min(retry, 4))), 10))) } catch { break }
         }
     }
 }

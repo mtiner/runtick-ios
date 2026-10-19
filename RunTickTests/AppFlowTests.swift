@@ -41,15 +41,15 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
     func testRestoreKeepsMembershipInsteadOfPostingLeave() async {
         let client = api { request in
             if request.url!.path == "/api/auth/me" { return (200, "{\"ok\":true,\"data\":{\"user\":{\"id\":71,\"loginId\":\"runner\"}}}") }
-            if request.url!.path == "/api/rooms/current" { return (200, "{\"ok\":true,\"data\":{\"room\":{\"code\":\"1234\",\"status\":\"active\"}}}") }
+            if request.url!.path == "/api/rooms/current" { XCTFail("Cold restore must not request room membership"); return (200, "{\"ok\":true,\"data\":{\"room\":{\"code\":\"1234\",\"status\":\"active\"}}}") }
             if request.url!.path == "/api/rooms/leave" { XCTFail("Restoring must never leave the room") }
             return (200, "{\"ok\":true,\"data\":{}}")
         }
         let app = AppModel(api: client)
         await app.restore()
         XCTAssertEqual(app.user?.id, 71)
-        XCTAssertEqual(app.room?.code, "1234")
-        XCTAssertFalse(app.lobbyReady)
+        XCTAssertNil(app.room)
+        XCTAssertTrue(app.lobbyReady)
         app.clearSession(); clearRecords()
     }
     func testNoMembershipOpensLobbyWithoutNetworkLeave() async throws {
