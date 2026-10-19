@@ -339,3 +339,54 @@ final class AvatarTests: XCTestCase {
         XCTAssertEqual(member.avatar,user.avatar)
     }
 }
+
+extension NtpTests {
+    @MainActor func testRoomJoiningStartupSyncReceivesProgressAndRequestDetails() async throws {
+        let client = NtpClient(); client.configuration.validSamples = 3
+        client.pause = { _ in }
+        var requests = 0
+        var gate: CheckedContinuation<Void, Never>?
+        client.exchange = { _, _ in
+            requests += 1
+            if requests == 2 { await withCheckedContinuation { gate = $0 } }
+            return ClockSample(sent: 0, received: 10, serverReceived: 6, serverSent: 6)
+        }
+        // Startup owns the request; the room joins after the first valid sample.
+        let startup = Task { try await client.synchronize { _ in } }
+        while gate == nil { await Task.yield() }
+        var progress: [Int] = [], details: [String] = []
+        let room = Task {
+            try await client.synchronize(detail: { details.append($0) }) { progress.append($0) }
+        }
+        while progress.isEmpty { await Task.yield() }
+        XCTAssertEqual(progress.first, 1, "A late observer must receive the existing sample count")
+        gate?.resume()
+        let first = try await startup.value, second = try await room.value
+        XCTAssertEqual(first.referenceUTC, second.referenceUTC)
+        XCTAssertEqual(requests, 3, "Joining the shared task must not create more UDP requests")
+        XCTAssertEqual(progress.last, 3)
+        XCTAssertTrue(details.contains { $0.contains("有效响应") })
+        XCTAssertTrue(details.contains { $0.contains("校时完成") })
+    }
+
+    @MainActor func testRejectedAndFailedRequestsAreVisibleEvenWithZeroValidSamples() async {
+        let client = NtpClient(); client.configuration.maxAttempts = 8
+        client.pause = { _ in }
+        var details: [String] = [], requests = 0
+        client.exchange = { server, _ in
+            requests += 1
+            if server == "ntp.tencent.com" { throw ClientError.message("NTP 请求超时") }
+            return ClockSample(sent: 0, received: 200, serverReceived: 100, serverSent: 100)
+        }
+        do {
+            _ = try await client.synchronize(detail: { details.append($0) }) { count in XCTAssertEqual(count, 0) }
+            XCTFail("Rejected samples must not produce a mapping")
+        } catch {
+            XCTAssertNil(client.latest)
+            XCTAssertEqual(requests, 9)
+            XCTAssertTrue(details.contains { $0.contains("ntp.tencent.com") && $0.contains("请求超时") })
+            XCTAssertTrue(details.contains { $0.contains("RTT") && $0.contains("未计入") })
+            XCTAssertTrue(details.last?.contains("NTP 校时失败") == true)
+        }
+    }
+}

@@ -20,8 +20,9 @@ struct RoomView: View {
             if model.race?.active != true {
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "network" : "network.slash")
-                if model.syncing { ProgressView("NTP 校时 \(model.progress)/8", value: Double(model.progress), total: 8) }
+                if model.syncing { ProgressView("NTP 校时 \(model.progress)/\(model.syncTarget)", value: Double(model.progress), total: Double(model.syncTarget)) }
                 else if let clock = model.clock { Text("NTP \(clock.server) · \(clock.validSamples) 样本 · RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.estimatedUncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
+                if !model.syncDetail.isEmpty { Text(model.syncDetail).font(.footnote).foregroundStyle(RT.muted).accessibilityIdentifier("ntp.detail") }
                 Button("重新校准时间") { Task { await model.calibrate() } }.disabled(model.syncing || model.firing || model.pressed)
             }
             }

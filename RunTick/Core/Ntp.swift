@@ -100,9 +100,23 @@ private final class NtpExchange: @unchecked Sendable {
     static let shared = NtpClient()
     private(set) var latest: ClockMapping?
     private var inFlight: Task<ClockMapping, Error>?
-    func synchronize(progress: @escaping (Int) -> Void) async throws -> ClockMapping {
-        if let inFlight { return try await inFlight.value }
-        let task = Task { try await collect(progress:progress) }
+    private var observers: [UUID: (Int, String) -> Void] = [:]
+    private var currentProgress = 0
+    private var currentDetail = "准备校时"
+    private func report(_ count: Int, _ detail: String) {
+        currentProgress = count; currentDetail = detail
+        for observer in Array(observers.values) { observer(count, detail) }
+    }
+    func synchronize(detail: @escaping (String) -> Void = { _ in }, progress: @escaping (Int) -> Void) async throws -> ClockMapping {
+        let id = UUID()
+        observers[id] = { count, message in progress(count); detail(message) }
+        defer { observers.removeValue(forKey: id) }
+        if let inFlight {
+            progress(currentProgress); detail(currentDetail)
+            return try await inFlight.value
+        }
+        report(0, "准备校时")
+        let task = Task { try await collect() }
         inFlight = task
         defer { inFlight = nil }
         let value = try await withTaskCancellationHandler(operation: { try await task.value }, onCancel: { task.cancel() })
@@ -115,7 +129,7 @@ private final class NtpExchange: @unchecked Sendable {
     private var blockedUntil: [String: Double] = [:]
     private var denied = Set<String>()
     private var lastRequest = -Double.infinity
-    private func collect(progress: (Int) -> Void) async throws -> ClockMapping {
+    private func collect() async throws -> ClockMapping {
         let config = configuration
         guard config.validSamples >= 3, config.maxAttempts >= config.validSamples, config.intervalMs >= 16000, (1...60000).contains(config.timeoutMs), config.consecutiveFailureLimit >= 1, !config.servers.isEmpty, config.driftPpm.isFinite, config.driftPpm >= 0, config.maximumAgeMs > 0, config.maximumUncertaintyMs > 0 else { throw ClientError.message("NTP 配置无效") }
         var errors: [String] = []
@@ -126,7 +140,11 @@ private final class NtpExchange: @unchecked Sendable {
             for _ in 0..<config.maxAttempts {
                 try Task.checkCancellation()
                 let wait = Double(config.intervalMs) - (MonotonicClock.now() - lastRequest)
-                if wait > 0 { try await pause(UInt64(wait * 1_000_000)) }
+                if wait > 0 {
+                    report(samples.count, "\(server) · 等待下次采样（约 \(Int(ceil(wait/1000))) 秒）· \(currentDetail)")
+                    try await pause(UInt64(wait * 1_000_000))
+                }
+                report(samples.count, "\(server) · 请求中（超时 \(config.timeoutMs) ms）")
                 lastRequest = MonotonicClock.now()
                 do {
                     let sample: ClockSample
@@ -142,29 +160,36 @@ private final class NtpExchange: @unchecked Sendable {
                     let rtt = sample.received-sample.sent-(sample.serverSent-sample.serverReceived)
                     let offset = ((sample.serverReceived-sample.sent)+(sample.serverSent-sample.received))/2
                     print("RunTick NTP \(server) RTT=\(rtt) offset=\(offset)")
-                    if rtt <= config.maxRttMs { samples.append(sample) }
-                    progress(samples.count)
+                    if rtt <= config.maxRttMs {
+                        samples.append(sample)
+                        report(samples.count, "\(server) · 有效响应 · RTT \(String(format: "%.1f", rtt)) ms · Offset \(String(format: "%.1f", offset)) ms")
+                    } else {
+                        report(samples.count, "\(server) · 已响应但 RTT \(String(format: "%.1f", rtt)) ms 超出阈值，未计入有效样本")
+                    }
                     if samples.count >= config.validSamples {
                         let offsets = samples.map { (($0.serverReceived-$0.sent)+($0.serverSent-$0.received))/2 }
-                        guard (offsets.max()! - offsets.min()!) <= config.maxSpreadMs else { errors.append("\(server): Offset 不稳定"); break }
+                        guard (offsets.max()! - offsets.min()!) <= config.maxSpreadMs else { errors.append("\(server): Offset 不稳定"); report(samples.count, "\(server) · Offset 不稳定，切换服务器"); break }
                         var result = try NtpQuality.select(samples, driftPpm:config.driftPpm)
                         let local = MonotonicClock.now()
                         result.referenceMono = MonotonicClock.nanosAt(local); result.referenceUTC = local + result.offset
                         result.driftPpm = config.driftPpm; result.maximumAgeMs = config.maximumAgeMs; result.maximumUncertaintyMs = config.maximumUncertaintyMs
                         guard result.fresh else { throw ClientError.message("NTP 不确定度超出配置预算") }
                         result.server = server; result.validSamples = samples.count
+                        report(samples.count, "\(server) · 校时完成")
                         return result
                     }
                 } catch is CancellationError { throw CancellationError() }
                 catch let kiss as NtpPacket.Kiss {
                     if kiss.code == "DENY" || kiss.code == "RSTR" { denied.insert(server) }
                     blockedUntil[server] = MonotonicClock.now() + max(60000, pow(2, Double(min(17,max(4,kiss.poll)))) * 1000)
-                    errors.append("\(server): KoD \(kiss.code)"); break
-                } catch { print("RunTick NTP \(server) error=\(error.localizedDescription)"); errors.append("\(server): \(error.localizedDescription)"); failures += 1; if failures >= config.consecutiveFailureLimit { break } }
+                    errors.append("\(server): KoD \(kiss.code)"); report(samples.count, "\(server) · KoD \(kiss.code)，停止访问并退避"); break
+                } catch { print("RunTick NTP \(server) error=\(error.localizedDescription)"); errors.append("\(server): \(error.localizedDescription)"); report(samples.count, "\(server) · \(error.localizedDescription)"); failures += 1; if failures >= config.consecutiveFailureLimit { break } }
             }
             errors.append("\(server): 有效样本 \(samples.count)/\(config.validSamples)，质量未通过")
         }
-        throw ClientError.message("NTP 校时失败：" + errors.joined(separator: "; "))
+        let reason = "NTP 校时失败：" + errors.joined(separator: "; ")
+        report(currentProgress, reason)
+        throw ClientError.message(reason)
     }
 }
 

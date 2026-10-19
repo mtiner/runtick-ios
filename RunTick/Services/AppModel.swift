@@ -243,10 +243,12 @@ import Network
     private let ntpClient = NtpClient.shared
     var allowHTTPFallback = false
     var syncError = ""
+    var syncDetail = ""
+    var syncTarget: Int { ntpClient.configuration.validSamples }
     private var needsResync = false
     private var pathMonitor: NWPathMonitor?
     var syncSummary: String {
-        if syncing { return "时间同步中 · \(progress)/8" }
+        if syncing { return "时间同步中 · \(progress)/\(syncTarget)" }
         guard let value = recordingClock ?? clock else { return "时间同步失败 · 尚无可用时间基准" }
         let state = !value.fresh ? "同步失败 · 映射已过期或不可靠" : (value.server != "HTTP" && syncError.isEmpty ? "已同步" : "同步质量下降")
         return "\(state) · \(value.server) · 年龄 \(Int(value.ageMs/1000))s · 估计不确定度 \(String(format:"%.1f",value.estimatedUncertaintyMs))ms"
@@ -254,7 +256,7 @@ import Network
     func calibrate() async {
         guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
         do {
-            do { clock = try await ntpClient.synchronize { self.progress = $0 }; syncError = ""; needsResync = false }
+            do { clock = try await ntpClient.synchronize(detail: { self.syncDetail = $0 }) { self.progress = $0 }; syncError = ""; needsResync = false }
             catch {
                 guard allowHTTPFallback, !(error is CancellationError) else { throw error }
                 clock = try await httpFallback(); syncError = "NTP 不可用，使用 HTTP 降级"; needsResync = false
