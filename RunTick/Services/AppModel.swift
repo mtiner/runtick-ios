@@ -185,7 +185,7 @@ import Network
     }
     func start() {
         guard !started, !stopped else { return }; started = true
-        if clock == nil, let cached = ntpClient.latest, cached.fresh { clock = cached }
+        if clock == nil, let cached = AppTimeSync.latest, cached.fresh { clock = cached }
         tasks.append(Task { if clock?.fresh != true { await calibrate() } })
         let monitor = NWPathMonitor(); pathMonitor = monitor
         var initial = true
@@ -240,26 +240,26 @@ import Network
         guard !busy else { return }; busy = true; error = ""; defer { busy = false }
         do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
-    private let ntpClient = NtpClient.shared
     var allowHTTPFallback = false
     var syncError = ""
     var syncDetail = ""
-    var syncTarget: Int { ntpClient.configuration.validSamples }
+    var syncTarget: Int { AppTimeSync.target }
+    var syncProtocol: String { AppTimeSync.source == .suningHTTP ? "苏宁 HTTP" : "NTP" }
     private var needsResync = false
     private var pathMonitor: NWPathMonitor?
     var syncSummary: String {
         if syncing { return "时间同步中 · \(progress)/\(syncTarget)" }
         guard let value = recordingClock ?? clock else { return "时间同步失败 · 尚无可用时间基准" }
-        let state = !value.fresh ? "同步失败 · 映射已过期或不可靠" : (value.server != "HTTP" && syncError.isEmpty ? "已同步" : "同步质量下降")
+        let state = !value.fresh ? "同步失败 · 映射已过期或不可靠" : (syncError.isEmpty ? (value.syncSource == "HTTP" ? "已同步 · HTTP 精度未验证" : "已同步") : "同步质量下降")
         return "\(state) · \(value.server) · 年龄 \(Int(value.ageMs/1000))s · 估计不确定度 \(String(format:"%.1f",value.estimatedUncertaintyMs))ms"
     }
-    func calibrate() async {
+    func calibrate(force: Bool = false) async {
         guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
         do {
-            do { clock = try await ntpClient.synchronize(detail: { self.syncDetail = $0 }) { self.progress = $0 }; syncError = ""; needsResync = false }
+            do { if needsResync || force { AppTimeSync.invalidate() }; clock = try await AppTimeSync.synchronize(detail: { self.syncDetail = $0 }) { self.progress = $0 }; syncError = ""; needsResync = false }
             catch {
                 guard allowHTTPFallback, !(error is CancellationError) else { throw error }
-                clock = try await httpFallback(); syncError = "NTP 不可用，使用 HTTP 降级"; needsResync = false
+                clock = try await httpFallback(); syncError = "主时间源不可用，使用应用 API HTTP 备用源"; needsResync = false
             }
             if let value = clock { print("RunTick sync server=\(value.server) samples=\(value.validSamples) RTT=\(value.averageRttMs) offset=\(value.offset) age=\(value.ageMs) estimatedUncertainty=\(value.estimatedUncertaintyMs)") }
             if race?.active == true && recordingClock == nil { recordingClock = clock }
@@ -391,7 +391,7 @@ import Network
     private func capture(_ kind: DeviceRole, at: Double, clock: ClockMapping, extra: Double = 0) {
         guard pending == nil, let race else { return }
         autoRetry = true
-        pending = PendingEvent(code: code, raceId: race.id, userId: user.id, event: TimingEvent(kind: kind, at: clock.utcAt(at), uncertaintyMs: clock.estimatedUncertaintyMs + extra, monoNanos: String(MonotonicClock.nanosAt(at)), deviceId: DeviceIdentity.value, sessionId: race.id, syncServer: clock.server, syncRttMs: clock.averageRttMs, syncAgeMs: clock.ageMs, syncOffsetMs: clock.offset, syncSource: clock.server == "HTTP" ? "HTTP" : "NTP"))
+        pending = PendingEvent(code: code, raceId: race.id, userId: user.id, event: TimingEvent(kind: kind, at: clock.utcAt(at), uncertaintyMs: clock.estimatedUncertaintyMs + extra, monoNanos: String(MonotonicClock.nanosAt(at)), deviceId: DeviceIdentity.value, sessionId: race.id, syncServer: clock.server, syncRttMs: clock.averageRttMs, syncAgeMs: clock.ageMs, syncOffsetMs: clock.offset, syncSource: clock.syncSource))
         if let event = pending, let bytes = try? JSONEncoder().encode(event) {
             let key = "runtick.eventDiagnostics"
             var audit = UserDefaults.standard.array(forKey:key) as? [Data] ?? []

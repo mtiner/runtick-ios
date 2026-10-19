@@ -16,7 +16,7 @@ import SwiftUI
                 LaunchContainer(model: model)
                 #endif
             }
-                .task { _ = try? await NtpClient.shared.synchronize { _ in } }
+                .task { _ = try? await AppTimeSync.synchronize { _ in } }
                 .tint(Color(red: 0.12, green: 0.62, blue: 0.58))
                 .onChange(of: phase) { _, value in
                     UIApplication.shared.isIdleTimerDisabled = value == .active && model.room != nil

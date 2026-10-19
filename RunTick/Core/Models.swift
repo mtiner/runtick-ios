@@ -81,6 +81,7 @@ struct ClockMapping {
         return utc + delta / 1_000_000 * frequencyScale
     }
     var server: String = "HTTP"
+    var syncSource: String { server == "HTTP" || server == "f.m.suning.com" ? "HTTP" : "NTP" }
     var validSamples: Int = 0
     var ageMs: Double { max(0, MonotonicClock.now() - sampledAt * 1000) }
     var estimatedUncertaintyMs: Double { uncertaintyMs + ageMs * driftPpm / 1_000_000 }

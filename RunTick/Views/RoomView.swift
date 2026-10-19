@@ -19,10 +19,10 @@ struct RoomView: View {
             if model.race?.active != true {
             RTCard("房间 \(model.code)") {
                 Label(model.connected ? (model.ready ? "两端已就绪" : "等待另一台手机") : "连接中，自动重连…", systemImage: model.connected ? "network" : "network.slash")
-                if model.syncing { ProgressView("NTP 校时 \(model.progress)/\(model.syncTarget)", value: Double(model.progress), total: Double(model.syncTarget)) }
-                else if let clock = model.clock { Text("NTP \(clock.server) · \(clock.validSamples) 样本 · RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.estimatedUncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
-                if !model.syncDetail.isEmpty { Text(model.syncDetail).font(.footnote).foregroundStyle(RT.muted).accessibilityIdentifier("ntp.detail") }
-                Button("重新校准时间") { Task { await model.calibrate() } }.disabled(model.syncing || model.firing || model.pressed)
+                if model.syncing { ProgressView("\(model.syncProtocol) 校时 \(model.progress)/\(model.syncTarget)", value: Double(model.progress), total: Double(model.syncTarget)) }
+                else if let clock = model.clock { Text("\(clock.syncSource) \(clock.server) · \(clock.validSamples) 样本 · RTT \(clock.averageRttMs, specifier: "%.1f") ms · 估算 ±\(clock.estimatedUncertaintyMs, specifier: "%.0f") ms").font(.footnote).foregroundStyle(RT.muted) }
+                if !model.syncDetail.isEmpty { Text(model.syncDetail).font(.footnote).foregroundStyle(RT.muted).accessibilityIdentifier("timeSync.detail") }
+                Button("重新校准时间") { Task { await model.calibrate(force: true) } }.disabled(model.syncing || model.firing || model.pressed)
             }
             }
             if model.race?.active != true && model.race?.status != "completed" {
@@ -145,7 +145,7 @@ struct RoomView: View {
             } else if race.active {
                 if model.clock == nil {
                     if model.syncing { ProgressView("正在校时…") }
-                    else { Button("重新校时") { Task { await model.calibrate() } } }
+                    else { Button("重新校时") { Task { await model.calibrate(force: true) } } }
                 }
                 if model.raceRole == .start {
                     Text(model.cue.isEmpty ? "等待发令" : model.cue).font(.title2)
@@ -184,7 +184,7 @@ struct FinishPad: View {
             }.allowsHitTesting(false)
             TouchCapture(onDown: { model.press() }, onUp: { model.release(at: $0) }, onCancel: { model.cancelPress() }).padding(.top, 100)
             VStack { Spacer(); TimelineView(.periodic(from: .now, by: 1)) { _ in
-                if !model.hasRecordingClock { Button(model.syncing ? "正在校时…" : "重新校时") { Task { await model.calibrate() } }.buttonStyle(.glass).disabled(model.syncing) }
+                if !model.hasRecordingClock { Button(model.syncing ? "正在校时…" : "重新校时") { Task { await model.calibrate(force: true) } }.buttonStyle(.glass).disabled(model.syncing) }
             } }.padding()
         }.animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.pressed).sensoryFeedback(.impact(weight: .light), trigger: model.pressed).foregroundStyle(Color(red: 0.07, green: 0.24, blue: 0.23))
             .safeAreaInset(edge: .top, spacing: 0) {

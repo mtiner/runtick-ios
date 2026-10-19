@@ -390,3 +390,157 @@ extension NtpTests {
         }
     }
 }
+
+final class SuningTimeTests: XCTestCase {
+    func testProvidedResponseRequiresSuccessfulMillisecondTimestamp() throws {
+        let data = Data(#"{"api":"time","code":"1","currentTime":1792384756200,"msg":""}"#.utf8)
+        XCTAssertEqual(try SuningTimeProtocol.timestamp(data,status:200),1792384756200)
+        for json in [#"{"api":"time","code":"0","currentTime":1792384756200}"#,
+                     #"{"api":"time","code":"1","currentTime":1792384756}"#,
+                     #"{"api":"time","code":"1","sysTime2":"2026-10-19 12:00:00"}"#,
+                     #"{"api":"other","code":"1","currentTime":1792384756200}"#] {
+            XCTAssertThrowsError(try SuningTimeProtocol.timestamp(Data(json.utf8),status:200))
+        }
+        XCTAssertThrowsError(try SuningTimeProtocol.timestamp(data,status:503))
+        XCTAssertThrowsError(try SuningTimeProtocol.timestamp(data,status:200,age:"10"))
+        XCTAssertNoThrow(try SuningTimeProtocol.timestamp(data,status:200,age:"0"))
+    }
+    func testMidpointOffsetMappingAndHTTPSourceMatchAndroidVector() throws {
+        let t = 1792384756000.0
+        let samples = (0..<4).map { n in HTTPTimeSample(sent:t+Double(n)*100,received:t+Double(n)*100+10,serverUTC:t+Double(n)*100+205) }
+        var config=SuningTimeConfiguration(); config.validSamples=4
+        let mapping = try SuningTimeProtocol.select(samples,config:config)
+        XCTAssertEqual(mapping.offset,200)
+        XCTAssertEqual(mapping.averageRttMs,10)
+        XCTAssertEqual(mapping.uncertaintyMs,30.0155,accuracy:0.00001)
+        XCTAssertEqual(mapping.server,"f.m.suning.com"); XCTAssertEqual(mapping.syncSource,"HTTP")
+        XCTAssertEqual(mapping.validSamples,4); XCTAssertTrue(mapping.fresh)
+        let local = MonotonicClock.now()
+        let locked = mapping
+        XCTAssertEqual(locked.utcAt(local+1234.5)-locked.utcAt(local),1234.5,accuracy:0.002)
+    }
+    func testInvalidSlowAndUnstableSamplesRejected() {
+        let good = HTTPTimeSample(sent:0,received:10,serverUTC:205)
+        XCTAssertThrowsError(try SuningTimeProtocol.select([good],config:SuningTimeConfiguration()))
+        XCTAssertThrowsError(try SuningTimeProtocol.select(Array(repeating:HTTPTimeSample(sent:0,received:500,serverUTC:205),count:4),config:SuningTimeConfiguration()))
+        XCTAssertThrowsError(try SuningTimeProtocol.select([good,good,good,HTTPTimeSample(sent:0,received:10,serverUTC:405)],config:SuningTimeConfiguration()))
+    }
+    @MainActor func testEightSamplesCacheAndFailureKeepLastValidMapping() async throws {
+        let client = SuningTimeClient(); client.pause = { _ in XCTFail("Zero interval must not schedule a pause") }
+        let t = MonotonicClock.now(); var count = 0
+        client.exchange = {
+            count += 1
+            let sent = t+Double(count)*100
+            return HTTPTimeSample(sent:sent,received:sent+10,serverUTC:sent+205)
+        }
+        let value = try await client.synchronize()
+        XCTAssertEqual(count,8)
+        _ = try await client.synchronize(); XCTAssertEqual(count,8)
+        client.invalidate()
+        var outcomes: [String] = []
+        client.exchange = { count += 1; throw ClientError.message("HTTP 请求超时") }
+        do { _ = try await client.synchronize(detail:{outcomes.append($0)}); XCTFail() } catch {}
+        XCTAssertEqual(count,20)
+        XCTAssertEqual(client.latest?.referenceUTC,value.referenceUTC)
+        XCTAssertTrue(outcomes.contains { $0.contains("HTTP 请求超时") })
+        var old = value; old.maximumAgeMs = -1
+        XCTAssertFalse(old.fresh)
+    }
+    @MainActor func testLateSubscriberReceivesSharedHTTPProgress() async throws {
+        let client = SuningTimeClient(); client.pause = { _ in XCTFail("Zero interval must not schedule a pause") }
+        var count=0; var gate: CheckedContinuation<Void,Never>?
+        let t=MonotonicClock.now()
+        client.exchange = {
+            count += 1
+            if count==2 { await withCheckedContinuation { gate=$0 } }
+            let sent=t+Double(count)*100
+            return HTTPTimeSample(sent:sent,received:sent+10,serverUTC:sent+205)
+        }
+        let startup=Task { try await client.synchronize() }
+        while gate==nil { await Task.yield() }
+        var counts: [Int]=[]
+        let room=Task { try await client.synchronize(progress:{counts.append($0)}) }
+        while counts.isEmpty { await Task.yield() }
+        XCTAssertEqual(counts.first,1)
+        gate?.resume()
+        _ = try await startup.value; _ = try await room.value
+        XCTAssertEqual(count,8); XCTAssertEqual(counts.last,8)
+        XCTAssertEqual(AppTimeSync.source,.suningHTTP)
+    }
+}
+
+private final class SuningProtocolStub: URLProtocol, @unchecked Sendable {
+    static var handler: ((URLRequest) throws -> (Int, Data, [String:String]))?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        do {
+            let (status, data, headers) = try Self.handler!(request)
+            client?.urlProtocol(self,didReceive:HTTPURLResponse(url:request.url!,statusCode:status,httpVersion:nil,headerFields:headers)!,cacheStoragePolicy:.notAllowed)
+            client?.urlProtocol(self,didLoad:data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch { client?.urlProtocol(self,didFailWithError:error) }
+    }
+    override func stopLoading() {}
+}
+extension SuningTimeTests {
+    @MainActor func testHTTPTransportUsesNonceNoCacheAndNoAPICookies() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SuningProtocolStub.self]
+        let client = SuningTimeClient(configuration:configuration)
+        client.pause = { _ in }
+        var nonces = Set<String>()
+        SuningProtocolStub.handler = { request in
+            XCTAssertEqual(request.url?.host,"f.m.suning.com")
+            XCTAssertEqual(request.url?.scheme,"https")
+            XCTAssertNil(request.value(forHTTPHeaderField:"Cookie"))
+            XCTAssertEqual(request.value(forHTTPHeaderField:"Cache-Control"),"no-cache, no-store")
+            XCTAssertEqual(request.timeoutInterval,1.5)
+            let nonce = URLComponents(url:request.url!,resolvingAgainstBaseURL:false)!.queryItems!.first { $0.name=="_runtick" }!.value!
+            XCTAssertTrue(nonces.insert(nonce).inserted)
+            let timestamp = Int64(MonotonicClock.now()) + Int64(nonces.count)
+            return (200,Data("{\"api\":\"time\",\"code\":\"1\",\"currentTime\":\(timestamp)}".utf8),["Age":"0"])
+        }
+        defer { SuningProtocolStub.handler = nil }
+        let value = try await client.synchronize()
+        XCTAssertEqual(value.validSamples,8); XCTAssertEqual(nonces.count,8)
+    }
+}
+
+extension SuningTimeTests {
+    func testEightSamplesPreferLowRTTHalfInsteadOfAveragingAllOffsets() throws {
+        let samples = (0..<8).map { n -> HTTPTimeSample in
+            let sent=1792384756000.0+Double(n)*100
+            let rtt=n<4 ? 10.0 : 100.0
+            let offset=n<4 ? 200.0 : 220.0
+            return HTTPTimeSample(sent:sent,received:sent+rtt,serverUTC:sent+rtt/2+offset)
+        }
+        let result=try SuningTimeProtocol.select(samples,config:SuningTimeConfiguration())
+        XCTAssertEqual(result.validSamples,8)
+        XCTAssertEqual(result.offset,200)
+        XCTAssertEqual(result.averageRttMs,10)
+    }
+    func testRetryAfterSecondsDateAndDefault() {
+        XCTAssertEqual(SuningTimeProtocol.retryDelayMs(status:429,retryAfter:"15"),15000)
+        XCTAssertEqual(SuningTimeProtocol.retryDelayMs(status:503,retryAfter:"Thu, 01 Jan 1970 00:00:10 GMT",now:Date(timeIntervalSince1970:0)),10000)
+        XCTAssertEqual(SuningTimeProtocol.retryDelayMs(status:429,retryAfter:"invalid"),60000)
+        XCTAssertNil(SuningTimeProtocol.retryDelayMs(status:200,retryAfter:"15"))
+    }
+    @MainActor func testRateLimitStopsRoundAndBlocksImmediateRetry() async {
+        let configuration=URLSessionConfiguration.ephemeral
+        configuration.protocolClasses=[SuningProtocolStub.self]
+        let client=SuningTimeClient(configuration:configuration)
+        var requests=0
+        SuningProtocolStub.handler={ _ in
+            requests += 1
+            return (429,Data(),["Retry-After":"60"])
+        }
+        defer { SuningProtocolStub.handler=nil }
+        for _ in 0..<2 {
+            do { _ = try await client.synchronize(); XCTFail("Rate limiting must not be ignored") }
+            catch { XCTAssertTrue(error is HTTPTimeRateLimit) }
+        }
+        XCTAssertEqual(requests,1)
+        XCTAssertNil(client.latest)
+    }
+}
