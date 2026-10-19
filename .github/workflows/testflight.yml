@@ -1,5 +1,7 @@
 name: TestFlight
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 concurrency:
   group: testflight
