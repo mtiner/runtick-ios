@@ -25,7 +25,7 @@ struct RootView: View {
                             Group {
                                 if model.user == nil { loginView }
                                 else if let room = model.room {
-                                    RoomView(model: room, onEditAvatar: { showAvatarPicker = true }, leave: { Task { await model.perform { room.error = ""; do { try await model.leave() } catch { room.error = error.localizedDescription } } } })
+                                    RoomView(model: room, leave: { Task { await model.perform { room.error = ""; do { try await model.leave() } catch { room.error = error.localizedDescription } } } })
                                 } else { lobby }
                             }.toolbar(.hidden, for: .navigationBar)
                         }
@@ -86,7 +86,7 @@ struct RootView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 8)
             }.rtEntrance(0.08)
             if let api = model.api {
-                NavigationLink { HistoryView(api: api, user: user, room: nil, onEditAvatar:{ showAvatarPicker = true }) } label: {
+                NavigationLink { HistoryView(api: api, user: user, room: nil) } label: {
                     HStack { Image(systemName: "chart.xyaxis.line"); Text("历史成绩"); Spacer(); Image(systemName: "arrow.right") }
                 }.rtEntrance(0.12)
             }
@@ -184,7 +184,7 @@ struct UserAvatarView: View {
     var size: CGFloat = 40
     var body: some View {
         AsyncImage(url:AvatarImageURL.make(filename)) { phase in
-            if let image = phase.image { image.resizable().scaledToFit().padding(size * 0.06) }
+            if let image = phase.image { image.resizable().scaledToFill() }
             else { Text(String(name.prefix(1)).uppercased()).font(.system(size:size * 0.4,weight:.bold,design:.rounded)).foregroundStyle(RT.deep) }
         }
         .frame(width:size,height:size)

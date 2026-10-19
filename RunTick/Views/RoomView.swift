@@ -3,7 +3,6 @@ import UIKit
 
 struct RoomView: View {
     @Bindable var model: RoomModel
-    var onEditAvatar: (() -> Void)? = nil
     let leave: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var roleHighlight
@@ -46,9 +45,7 @@ struct RoomView: View {
                         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: model.role)
                 }.rtEntrance(0.08)
                 RTCard("房间成员（\(model.members.count)/2）") { ForEach(model.members) { member in HStack {
-                    if member.loginId == model.user.loginId, let onEditAvatar {
-                        Button(action:onEditAvatar) { UserAvatarView(filename:member.avatar,name:member.loginId,size:36) }.buttonStyle(.plain).accessibilityLabel("修改头像")
-                    } else { UserAvatarView(filename:member.avatar,name:member.loginId,size:36) }
+                    UserAvatarView(filename:member.avatar,name:member.loginId,size:36)
                     Text(member.loginId); Spacer(); Text("\(model.displayedRole(for: member)?.title ?? "同步中") · \(member.online == true ? "在线" : "离线")").foregroundStyle(.secondary) } } }
             }
             if let race = model.race { raceRTCard(race).id(race.id).rtEntrance(0.08) }
@@ -56,7 +53,7 @@ struct RoomView: View {
                 Button("开始记录") { soundCheck = true }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock?.fresh != true || model.syncing || model.busy)
             }
             if let pending = model.pending { RTCard("计时记录待同步") { Text("\(pending.event.kind == .start ? "起点" : "终点")计时已保存在此设备上，联网后将自动重试同步。"); Button("重新同步") { Task { await model.submit() } }.disabled(model.submitting) } }
-            NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code, onEditAvatar:onEditAvatar) }
+            NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code) }
             Button("退出房间", systemImage: "rectangle.portrait.and.arrow.right", action: requestExit)
         }
         .confirmationDialog("退出房间？", isPresented: $confirmExit, titleVisibility: .visible) {

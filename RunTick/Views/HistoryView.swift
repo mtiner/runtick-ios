@@ -2,7 +2,6 @@ import SwiftUI
 
 struct HistoryView: View {
     let api: APIClient; let user: User; let room: String?
-    let onEditAvatar: (() -> Void)?
     @State private var data: HistoryData?
     @State private var athleteId = 0
     @State private var distance = 0
@@ -11,7 +10,7 @@ struct HistoryView: View {
     @State private var loading = false
     @State private var error = ""
     var filter: String { "\(athleteId):\(distance):\(sort):\(offset):\(user.avatar ?? "")" }
-    init(api: APIClient, user: User, room: String?, onEditAvatar: (() -> Void)? = nil) { self.api = api; self.user = user; self.room = room; self.onEditAvatar = onEditAvatar; _athleteId = State(initialValue: user.id) }
+    init(api: APIClient, user: User, room: String?) { self.api = api; self.user = user; self.room = room; _athleteId = State(initialValue: user.id) }
     var body: some View {
         RTPage {
             RTBrand().rtEntrance()
@@ -20,9 +19,7 @@ struct HistoryView: View {
             RTCard("筛选") {
                 if let athlete = data?.athletes.first(where:{ $0.id == athleteId }) {
                     HStack {
-                        if athlete.id == user.id, let onEditAvatar {
-                            Button(action:onEditAvatar) { UserAvatarView(filename:athlete.avatar,name:athlete.loginId,size:32) }.buttonStyle(.plain).accessibilityLabel("修改头像")
-                        } else { UserAvatarView(filename:athlete.avatar,name:athlete.loginId,size:32) }
+                        UserAvatarView(filename:athlete.avatar,name:athlete.loginId,size:32)
                         Text(athlete.loginId).font(.subheadline)
                     }
                 }
