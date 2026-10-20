@@ -51,7 +51,9 @@ struct HistoryView: View {
                 if !error.isEmpty { Button("重新加载成绩") {Task {await load(reset:records.isEmpty)}} }
                 if !hasMore && !records.isEmpty { Text("已加载全部成绩").font(.caption).foregroundStyle(RT.muted) }
             }.padding(24)
-        }.background(RT.aqua.opacity(0.05))
+        }.background { RTBackdrop() }
+        .foregroundStyle(RT.ink).tint(RT.deep)
+        .preferredColorScheme(.light)
         .navigationTitle("历史成绩").navigationBarTitleDisplayMode(.inline)
         .task(id:filter) { await load(reset:true) }
         .onChange(of:athleteId) { _,_ in distance=0;distanceIndex=0 }

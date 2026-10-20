@@ -101,8 +101,8 @@ struct RoomView: View {
                         Button(model.busy ? "正在保存…" : "保存设置") {
                             Task { await model.action { try await model.saveRoomSettings(); soundCheck = false; model.editingSettings = false } }
                         }.buttonStyle(RTButtonStyle()).disabled(model.busy || !model.stages.allSatisfy(\.valid))
-                        Button("返回准备") { soundCheck = false }.font(.subheadline).disabled(model.busy)
-                    }.padding(.horizontal, 24).padding(.vertical, 14).background(.ultraThinMaterial)
+                        Button("返回准备") { soundCheck = false }.buttonStyle(RTButtonStyle(secondary: true)).disabled(model.busy)
+                    }.padding(.horizontal, 24).padding(.vertical, 14).background(RT.background)
                 }.navigationTitle("发令设置").navigationBarTitleDisplayMode(.inline)
                     .rtErrorAlert($model.error)
             }.presentationDetents([.large]).interactiveDismissDisabled(model.busy)
@@ -226,6 +226,10 @@ struct TimeSyncStatus: View {
         TimelineView(.periodic(from:.now,by:1)) { _ in
             VStack(alignment:.leading,spacing:4) {
                 Text(model.syncSummary).font(.caption).foregroundStyle(RT.muted)
+                if !model.syncing && !model.syncError.isEmpty {
+                    Text("校时暂未完成，可继续调整设置。请检查网络后点击重新校准；校时有效后才能开始新一轮。")
+                        .font(.caption).foregroundStyle(RT.muted).accessibilityIdentifier("room.syncNotice")
+                }
                 if model.syncing {
                     Text("此次 RTT \(model.latestSyncRtt.map { String(format:"%.1f ms",$0) } ?? "—") · 平均 RTT \(model.averageSyncRtt.map { String(format:"%.1f ms",$0) } ?? "—")").font(.caption).foregroundStyle(RT.muted)
                 } else if let rtt=model.averageSyncRtt ?? model.clock?.averageRttMs {

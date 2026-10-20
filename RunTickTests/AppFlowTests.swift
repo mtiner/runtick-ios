@@ -205,5 +205,19 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         XCTAssertEqual(room.syncSummary,"时间同步已过期，请重新同步")
     }
 
+    func testCalibrationFailureStaysInlineAndPreservesActionError() async {
+        let client = api { _ in (200, "{\"ok\":true,\"data\":{}}") }
+        let room = RoomModel(code: "4932", user: User(id: 71, loginId: "runner"), api: client)
+        let source = SuningTimeClient.shared
+        let previous = source.exchange
+        source.exchange = { throw ClientError.message("time source unavailable") }
+        defer { source.exchange = previous; room.stop() }
+        room.error = "保存设置失败"
+        await room.calibrate(force: true)
+        XCTAssertFalse(room.syncError.isEmpty)
+        XCTAssertEqual(room.error, "保存设置失败", "Background calibration must not overwrite or open an action alert")
+        XCTAssertEqual(room.syncSummary, "时间同步失败，请重试")
+    }
+
 }
 #endif

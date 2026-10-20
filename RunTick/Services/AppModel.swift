@@ -246,7 +246,7 @@ import Network
         return syncError.isEmpty ? "时间已同步" : "时间同步质量下降，请重新同步"
     }
     func calibrate(force: Bool = false) async {
-        guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; error = ""; defer { syncing = false }
+        guard !syncing, !pressed, !firing else { return }; syncing = true; progress = 0; defer { syncing = false }
         do {
             do { if needsResync || force { AppTimeSync.invalidate() }; clock = try await AppTimeSync.synchronize(detail: { self.syncDetail = $0; self.latestSyncRtt = SuningTimeClient.shared.latestRTT; self.averageSyncRtt = SuningTimeClient.shared.averageRTT; print("RunTick time sync: \($0)") }) { self.progress = $0 }; syncError = ""; needsResync = false }
             catch {
@@ -255,7 +255,7 @@ import Network
             }
             if let value = clock { latestSyncRtt = SuningTimeClient.shared.latestRTT ?? value.averageRttMs; averageSyncRtt = SuningTimeClient.shared.averageRTT ?? value.averageRttMs; print("RunTick sync server=\(value.server) samples=\(value.validSamples) RTT=\(value.averageRttMs) offset=\(value.offset) age=\(value.ageMs) estimatedUncertainty=\(value.estimatedUncertaintyMs)") }
             if race?.active == true && recordingClock == nil { recordingClock = clock }
-        } catch { if !(error is CancellationError) { syncError = error.localizedDescription; print("RunTick time sync failed: \(syncError)"); self.error = "时间同步失败，请检查网络后重试。" } }
+        } catch { if !(error is CancellationError) { syncError = error.localizedDescription; print("RunTick time sync failed: \(syncError)") } }
     }
     private func httpFallback() async throws -> ClockMapping {
         var samples: [ClockSample] = []
@@ -315,7 +315,8 @@ import Network
     func beginRecording() async {
         guard pending == nil else { error = "上一轮计时记录尚未同步，请重新同步后再开始。"; return }
         if needsResync || clock?.fresh != true { await calibrate() }
-        guard ready, connected, role != nil, !roleSaving, clock?.fresh == true, !syncing else {
+        guard clock?.fresh == true, !syncing else { return }
+        guard ready, connected, role != nil, !roleSaving else {
             error = roleSaving ? "角色正在后台同步，请稍后开始记录。" : "请等待两端就绪并完成校时，再开始记录。"; return
         }
         await action {
@@ -341,7 +342,7 @@ import Network
             guard shared.count == 3, shared.allSatisfy(\.valid) else { error = "本轮发令设置超出 0～10 秒整数范围，暂无法发令。请重新创建房间并使用此范围设置。"; return }
             stages = shared
         }
-        guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); if self.clock?.fresh == true { error = "时间校准已完成，请再次发令。" } }; return }
+        guard let clock, clock.fresh, !syncing, !firing, race?.active == true, race?.startAt == nil, pending == nil, raceRole == .start else { if self.clock?.fresh != true { await calibrate(); if self.clock?.fresh == true { syncDetail = "时间校准已完成，请再次发令。" } }; return }
         firing = true; let snapshot = recordingClock ?? clock
         let token = UUID(); fireGeneration = token
         let raceId = race!.id
