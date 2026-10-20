@@ -240,6 +240,8 @@ jobs:
               "manageAppVersionAndBuildNumber": True,
           }))
           PY
+          echo "UPLOAD_AFTER=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            >> "$GITHUB_ENV"
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/RunTick.xcarchive" \
             -exportPath "$RUNNER_TEMP/export" \
@@ -247,3 +249,163 @@ jobs:
             -authenticationKeyPath "$KEY_PATH" \
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID"
+      - name: Submit to external Beta group
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, subprocess, time
+          import urllib.error, urllib.request
+          from datetime import datetime, timedelta, timezone
+
+          def b64(data):
+              return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+          def der_to_raw(der):
+              i = 2
+              if der[1] & 0x80:
+                  i = 2 + (der[1] & 0x7f)
+              def read_int(buf, i):
+                  ln = buf[i + 1]
+                  return buf[i + 2:i + 2 + ln], i + 2 + ln
+              r, i = read_int(der, i)
+              s, _ = read_int(der, i)
+              return r[-32:].rjust(32, b"\x00") + s[-32:].rjust(32, b"\x00")
+
+          def token():
+              now = int(time.time())
+              header = b64(json.dumps({
+                  "alg": "ES256",
+                  "kid": os.environ["KEY_ID"],
+                  "typ": "JWT",
+              }).encode())
+              payload = b64(json.dumps({
+                  "iss": os.environ["ISSUER_ID"],
+                  "iat": now,
+                  "exp": now + 600,
+                  "aud": "appstoreconnect-v1",
+              }).encode())
+              msg = f"{header}.{payload}".encode()
+              der = subprocess.check_output([
+                  "openssl", "dgst", "-sha256", "-sign",
+                  os.environ["KEY_PATH"],
+              ], input=msg)
+              return f"{header}.{payload}.{b64(der_to_raw(der))}"
+
+          def call(method, url, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(
+                  url, data=data, method=method, headers={
+                      "Authorization": f"Bearer {token()}",
+                      "Content-Type": "application/json",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      raw = resp.read().decode()
+                      return resp.status, json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as exc:
+                  return exc.code, exc.read().decode()[:500]
+
+          started = datetime.fromisoformat(
+              os.environ["UPLOAD_AFTER"].replace("Z", "+00:00")
+          )
+          apps = call(
+              "GET",
+              "https://api.appstoreconnect.apple.com/v1/apps"
+              "?filter[bundleId]=cc.runtick.app",
+          )[1]
+          app_id = apps["data"][0]["id"]
+          groups = call(
+              "GET",
+              "https://api.appstoreconnect.apple.com/v1/apps/"
+              + app_id + "/betaGroups?limit=20",
+          )[1]
+          group = next(
+              g for g in groups["data"]
+              if g["attributes"].get("name") == "Beta"
+              and not g["attributes"].get("isInternalGroup")
+          )
+          deadline = datetime.now(timezone.utc) + timedelta(minutes=30)
+          build = None
+          while datetime.now(timezone.utc) < deadline:
+              listed = call(
+                  "GET",
+                  "https://api.appstoreconnect.apple.com/v1/builds"
+                  f"?filter[app]={app_id}&sort=-uploadedDate&limit=5",
+              )[1]
+              fresh = []
+              for item in listed["data"]:
+                  uploaded = datetime.fromisoformat(
+                      item["attributes"]["uploadedDate"]
+                  )
+                  if uploaded >= started:
+                      fresh.append(item)
+              if fresh:
+                  build = fresh[0]
+                  state = build["attributes"].get("processingState")
+                  print("build", build["attributes"].get("version"), state)
+                  if state == "VALID":
+                      break
+                  if state in {"FAILED", "INVALID"}:
+                      raise SystemExit(f"build processing {state}")
+              time.sleep(30)
+          else:
+              raise SystemExit("build was not processed within 30 minutes")
+          locs = call(
+              "GET",
+              "https://api.appstoreconnect.apple.com/v1/builds/"
+              + build["id"] + "/betaBuildLocalizations",
+          )[1]
+          if not any(
+              item["attributes"].get("whatsNew")
+              for item in locs.get("data", [])
+          ):
+              status, payload = call(
+                  "POST",
+                  "https://api.appstoreconnect.apple.com/v1/"
+                  "betaBuildLocalizations",
+                  {"data": {
+                      "type": "betaBuildLocalizations",
+                      "attributes": {
+                          "locale": "zh-Hans",
+                          "whatsNew": "新的测试构建。",
+                      },
+                      "relationships": {"build": {"data": {
+                          "type": "builds", "id": build["id"],
+                      }}},
+                  }},
+              )
+              if status not in {200, 201, 409}:
+                  raise SystemExit(payload)
+          subs = call(
+              "GET",
+              "https://api.appstoreconnect.apple.com/v1/"
+              "betaAppReviewSubmissions?filter[build]="
+              + build["id"] + "&limit=5",
+          )[1]
+          if not subs.get("data"):
+              status, payload = call(
+                  "POST",
+                  "https://api.appstoreconnect.apple.com/v1/"
+                  "betaAppReviewSubmissions",
+                  {"data": {
+                      "type": "betaAppReviewSubmissions",
+                      "relationships": {"build": {"data": {
+                          "type": "builds", "id": build["id"],
+                      }}},
+                  }},
+              )
+              if status not in {200, 201, 409}:
+                  raise SystemExit(payload)
+          status, payload = call(
+              "POST",
+              "https://api.appstoreconnect.apple.com/v1/betaGroups/"
+              + group["id"] + "/relationships/builds",
+              {"data": [{"type": "builds", "id": build["id"]}]},
+          )
+          if status not in {200, 201, 204, 409}:
+              raise SystemExit(payload)
+          print("submitted to Beta", build["attributes"].get("version"))
+          PY
