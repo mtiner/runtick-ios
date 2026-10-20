@@ -153,11 +153,15 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
     func testFailedCalibrationDoesNotClaimItSucceeded() async {
         let client = api { _ in (503, "{\"ok\":false,\"error\":{\"code\":\"UNAVAILABLE\",\"message\":\"暂不可用\"}}") }
         let model = RoomModel(code: "1234", user: User(id: 71, loginId: "runner"), api: client)
+        let source = SuningTimeClient.shared
+        let previous = source.exchange
+        source.exchange = { throw ClientError.message("HTTP 时间源暂不可用") }
+        source.invalidate()
+        defer { source.exchange = previous; source.invalidate(); model.stop() }
         await model.fire()
         XCTAssertNil(model.clock)
-        XCTAssertTrue(model.error.contains("服务暂时不可用"))
-        XCTAssertFalse(model.error.contains("已完成"))
-        model.stop()
+        XCTAssertTrue(model.syncError.contains("HTTP 时间源暂不可用"))
+        XCTAssertTrue(model.error.isEmpty, "Calibration failures must not open a modal alert")
     }
     func testUnsupportedRemotePlanNeverFallsBackToUnconfirmedLocalSettings() async {
         let client = api { _ in XCTFail("Invalid remote settings must be rejected locally"); return (200, "{\"ok\":true,\"data\":{}}") }
@@ -168,7 +172,7 @@ private final class FlowProtocol: URLProtocol, @unchecked Sendable {
         model.stop()
     }
     func testTouchTimestampUsesEventClockRatherThanCallbackDelivery() {
-        XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.001)
+        XCTAssertEqual(MonotonicClock.fromUptime(21.125) - MonotonicClock.fromUptime(21), 125, accuracy: 0.01) // Epoch-millisecond Double subtraction can lose a few microseconds.
     }
     func testAvatarSaveSendsRawFilenameAndRejectedSaveKeepsCurrentProfile() async throws {
         var rejected = false
