@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   upload:
-    runs-on: xcode-27
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Require signing secrets
@@ -26,11 +26,16 @@ jobs:
           test -n "$KEY_ID" || { echo "Missing key ID"; ok=0; }
           test -n "$ISSUER_ID" || { echo "Missing issuer ID"; ok=0; }
           test "$ok" = 1
-      - name: Select Xcode 27.1
+      - name: Require compatible Xcode and generate project
         run: |
-          sudo xcode-select -s \
-            /Applications/Xcode_27.1_Release_Candidate.app
           xcodebuild -version
+          SDK=$(xcrun --sdk iphoneos --show-sdk-version)
+          if [ "${SDK%%.*}" -lt 26 ]; then
+            echo '::error::RunTick requires the iOS 26 SDK or newer.'
+            exit 1
+          fi
+          brew install xcodegen
+          xcodegen generate
       - name: Install distribution certificate
         env:
           P12: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
