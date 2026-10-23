@@ -86,20 +86,43 @@ struct RootView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 8)
             }.rtEntrance(0.08)
             if let api = model.api {
-                NavigationLink("起跑设置") { UserStarterSettingsView(api: api) }
                 NavigationLink { HistoryView(api: api, user: user, room: nil) } label: {
                     HStack { Image(systemName: "chart.xyaxis.line"); Text("历史成绩"); Spacer(); Image(systemName: "arrow.right") }
                 }.rtEntrance(0.12)
             }
+            RTCard {
+                VStack(spacing: 0) {
+                    Button { model.scheduleSync(showConfirmation: true) } label: {
+                        profileActionLabel(model.syncingRecords ? "正在同步…" : "同步训练记录", icon: "arrow.triangle.2.circlepath")
+                    }.disabled(model.syncingRecords)
+                    Divider()
+                    if let api = model.api {
+                        NavigationLink { UserStarterSettingsView(api: api) } label: {
+                            profileActionLabel("起跑设置", icon: "slider.horizontal.3", navigates: true)
+                        }
+                        Divider()
+                    }
+                    NavigationLink { AboutView() } label: { profileActionLabel("关于", icon: "info.circle", navigates: true) }
+                    Divider()
+                    Button { Task { await model.perform { await model.logout() } } } label: {
+                        profileActionLabel("退出登录", icon: "power")
+                    }.disabled(model.loading)
+                }.buttonStyle(.plain).accessibilityElement(children: .contain).accessibilityLabel("账号操作").accessibilityIdentifier("profile.actions")
+            }.rtEntrance(0.16)
             if !model.syncNotice.isEmpty { RTNotice(text: model.syncNotice) }
-            Button(model.syncingRecords ? "正在同步训练记录…" : "同步本机训练记录") { model.scheduleSync(showConfirmation: true) }.disabled(model.syncingRecords)
-            NavigationLink("关于 RunTick") { AboutView() }
-            Button { Task { await model.perform { await model.logout() } } } label: { Label("退出登录", systemImage: "power") }
-                .disabled(model.loading).rtEntrance(0.16)
+
         }.task {
             model.scheduleSync()
             do { try await model.refreshProfile() } catch is CancellationError {} catch { model.error = error.localizedDescription }
         }
+    }
+    private func profileActionLabel(_ title: String, icon: String, navigates: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).frame(width: 24).accessibilityHidden(true)
+            Text(title)
+            Spacer(minLength: 8)
+            if navigates { Image(systemName: "chevron.right").font(.caption).foregroundStyle(RT.muted).accessibilityHidden(true) }
+        }.font(.subheadline.weight(.semibold)).foregroundStyle(RT.ink).frame(minHeight: 48).contentShape(Rectangle())
     }
     var loginView: some View {
         RTPage {
