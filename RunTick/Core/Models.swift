@@ -130,3 +130,5 @@ enum DeviceIdentity {
         let id=UUID().uuidString; UserDefaults.standard.set(id,forKey:key); return id
     }()
 }
+
+struct StarterSettingsResponse: Decodable { let starterSettings: [StageDelay] }

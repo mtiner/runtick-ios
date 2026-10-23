@@ -53,10 +53,10 @@ struct RoomView: View {
             }
             if let race = model.race { raceRTCard(race).id(race.id).rtEntrance(0.08) }
             if model.role != nil && model.race?.active != true && model.race?.status != "completed" {
-                Button("开始记录") { Task { await model.beginRecording() } }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock?.fresh != true || model.syncing || model.busy)
+                Button("开始记录") { soundCheck = true }.buttonStyle(RTButtonStyle()).disabled(!model.ready || !model.connected || model.clock?.fresh != true || model.syncing || model.busy)
             }
             if model.race?.active != true {
-                Button("房间发令设置") { model.editingSettings = true; soundCheck = true }.disabled(model.busy)
+                Text("发令秒数使用起点用户在“我的—起跑设置”中的配置。").font(.footnote).foregroundStyle(RT.muted)
             }
             if let pending = model.pending { RTCard("计时记录待同步") { Text("\(pending.event.kind == .start ? "起点" : "终点")计时已保存在此设备上，联网后将自动重试同步。"); Button("重新同步") { Task { await model.submit() } }.disabled(model.submitting) } }
             NavigationLink("历史成绩") { HistoryView(api: model.api, user: model.user, room: model.code) }
@@ -78,35 +78,11 @@ struct RoomView: View {
             if visible && soundCheck { soundCheck = false }
             else { recording = visible }
         }
-        .sheet(isPresented: $soundCheck, onDismiss: { model.editingSettings = false; recording = recordingVisible }) {
-            NavigationStack {
-                RTPage {
-                    Text("房间 \(model.code) · 设置将用于后续每轮训练").font(.subheadline).foregroundStyle(RT.muted)
-                    RTCard("发令时间") {
-                        Toggle("检测起跑反应时", isOn: Binding(get: { model.stages[0].reactionEnabled == true }, set: { model.stages[0].reactionEnabled = $0 }))
-                        Text("有起跑器并固定手机后开启；三点式起跑可关闭，不影响发令或跑步成绩。").font(.footnote).foregroundStyle(RT.muted)
-                        Toggle("播放各就位口令", isOn: Binding(get: { model.stages[0].enabled != false }, set: { model.stages[0].enabled = $0 }))
-                        Toggle("播放预备口令", isOn: Binding(get:{model.stages[1].enabled != false},set:{model.stages[1].enabled=$0}))
-                        Text("将起点手机贴靠或固定在起跑器上，并保持稳定，以检测起跑反应。结果为设备运动估算。").font(.footnote).foregroundStyle(RT.muted)
-                        ForEach(0..<3, id: \.self) { i in
-                            if i == 2 || model.stages[i].enabled != false {
-                                StageDelayControl(title: ["开始 → 各就位", model.stages[0].enabled == false ? "开始 → 预备" : "各就位结束 → 预备", model.stages[1].enabled != false ? "预备结束 → 枪声" : (model.stages[0].enabled != false ? "各就位结束 → 枪声" : "开始 → 枪声")][i], stage: $model.stages[i])
-                            }
-                        }
-                    }.disabled(model.busy)
-                    if model.role == .start { AudioPreparationCard() }
-                    else { Text("请确认起点手机的媒体音量已调至最大，并使用扬声器播放发令声音。").font(.footnote).foregroundStyle(RT.muted) }
-                }.safeAreaInset(edge: .bottom) {
-                    VStack(spacing: 12) {
-                        Button(model.busy ? "正在保存…" : "保存设置") {
-                            Task { await model.action { try await model.saveRoomSettings(); soundCheck = false; model.editingSettings = false } }
-                        }.buttonStyle(RTButtonStyle()).disabled(model.busy || !model.stages.allSatisfy(\.valid))
-                        Button("返回准备") { soundCheck = false }.buttonStyle(RTButtonStyle(secondary: true)).disabled(model.busy)
-                    }.padding(.horizontal, 24).padding(.vertical, 14).background(RT.background)
-                }.navigationTitle("发令设置").navigationBarTitleDisplayMode(.inline)
-                    .rtErrorAlert($model.error)
-            }.presentationDetents([.large]).interactiveDismissDisabled(model.busy)
-        }
+        .confirmationDialog("本轮播放“各就各位”？", isPresented: $soundCheck, titleVisibility: .visible) {
+            Button("播放并开始") { Task { await model.beginRecording(playSet: true) } }
+            Button("跳过并开始") { Task { await model.beginRecording(playSet: false) } }
+            Button("取消", role: .cancel) {}
+        } message: { Text("秒数使用起点用户的起跑设置。反应检测仅从枪声开始，不影响正式计时。") }
         .fullScreenCover(isPresented: $recording) {
             Group {
                 if model.raceRole == .start { StarterPad(model: model, leave: closeRecording) }

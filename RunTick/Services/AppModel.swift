@@ -143,9 +143,10 @@ import Network
     private var fireGeneration = UUID()
     private var started = false
     var pending: PendingEvent?; var submitting = false
-    var stages: [StageDelay] { didSet { if stages.count == 3 && stages.allSatisfy(\.valid) { UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter") } } }
+    var stages = StageDelay.defaults
     private var tasks: [Task<Void, Never>] = []
     private var audio = StarterAudio()
+    var reactionNotice = ""
     private var reactionMotion = ReactionMotion()
     private var eventClock: ClockMapping?
     private var stopped = false
@@ -163,8 +164,6 @@ import Network
     var pendingKey: String { "pending:\(api.baseURL.absoluteString):\(user.id):\(code)" }
     init(code: String, user: User, api: APIClient) {
         self.code = code; self.user = user; self.api = api
-        let saved = UserDefaults.standard.data(forKey: "starter").flatMap { try? JSONDecoder().decode([StageDelay].self, from: $0) }
-        stages = saved?.count == 3 ? saved!.map(\.normalized) : StageDelay.defaults
         pending = UserDefaults.standard.data(forKey: pendingKey).flatMap { try? JSONDecoder().decode(PendingEvent.self, from: $0) }
     }
     func start() {
@@ -301,10 +300,6 @@ import Network
             if let race = result.race { update(race) }
         }
     }
-    func saveRoomSettings() async throws {
-        let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
-        let _: EmptyResponse = try await api.request("/api/rooms/\(code)/settings",method:"PUT",body:["starterSettings":body])
-    }
     func stageText(at now: Double = MonotonicClock.now()) -> String {
         if race?.startAt != nil { return "计时中" }
         guard let clock = recordingClock ?? clock, let points = race?.cueTimeline else { return "等待发令" }
@@ -312,7 +307,7 @@ import Network
         guard let point=points.last(where:{$0.at<=utc}) else { return "等待发令" }
         return ["各就各位","预备","枪声"][min(2,max(0,point.stage))]
     }
-    func beginRecording() async {
+    func beginRecording(playSet: Bool = true) async {
         guard pending == nil else { error = "上一轮计时记录尚未同步，请重新同步后再开始。"; return }
         if needsResync || clock?.fresh != true { await calibrate() }
         guard clock?.fresh == true, !syncing else { return }
@@ -320,7 +315,7 @@ import Network
             error = roleSaving ? "角色正在后台同步，请稍后开始记录。" : "请等待两端就绪并完成校时，再开始记录。"; return
         }
         await action {
-            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races", method: "POST")
+            let result: RaceResponse = try await api.request("/api/rooms/\(code)/races", method: "POST", body: ["playSet": playSet])
             if let race = result.race {
                 guard race.starterSettings != nil else { throw ClientError.message("发令设置暂时未能同步，请返回房间重试。") }
                 update(race)
@@ -333,6 +328,7 @@ import Network
         guard settings.count == 3, settings.allSatisfy(\.valid) else { error = "本轮发令设置超出 0～10 秒整数范围，暂无法发令。请重新创建房间并使用此范围设置。"; return }
         if clock?.fresh != true { await calibrate() }
         guard clock?.fresh == true, !Task.isCancelled else { return }
+        reactionNotice = ""
         attemptedAutoStart = race.id
         stages = settings
         await fire()
@@ -351,7 +347,7 @@ import Network
             // Both local and remote starts ask on the phone that actually plays the cues.
 
             cue = "请保持手机与起跑器稳定…"
-            try await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
+            try? await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
             try Task.checkCancellation()
             guard fireGeneration == token, !stopped, race?.id == raceId, race?.active == true else { return }
             try await audio.play(settings: stages, scheduledTimes: race?.cueTimeline?.map { point in let now=MonotonicClock.now(); return now + point.at - snapshot.utcAt(now) }, cue: { self.cue = $0; self.cueDeadline = $1 }, gun: { at, extra in
@@ -362,7 +358,7 @@ import Network
                     if self.race?.id == raceId { self.race?.reactionMs = result.reactionMs; self.race?.reactionStatus = result.reactionStatus }
                     Task {
                         do { try await TrainingSync.send(api: self.api, userId: self.user.id, path: "/api/rooms/\(self.code)/races/\(raceId)/reaction", body: ["reactionMs": result.reactionMs as Any? ?? NSNull(), "reactionStatus": result.reactionStatus], id: raceId) }
-                        catch { self.error = "反应时已保留，联网后补交：" + error.localizedDescription }
+                        catch { self.reactionNotice = "反应时暂未同步，已保留在本机；正式计时不受影响。" }
                     }
                 }
             })

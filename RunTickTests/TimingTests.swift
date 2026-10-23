@@ -5,6 +5,14 @@ import FoundationNetworking
 @testable import RunTick
 
 final class TimingTests: XCTestCase {
+    func testGunArmsWithoutQuietBaselineAndIgnoresPreGunSamples() {
+        var gate = MotionGate()
+        for at in stride(from: 0.0, through: 990.0, by: 10) { gate.sample(at: at, acceleration: 3, rotation: 2) }
+        gate.arm(at: 1000); gate.sample(at: 990, acceleration: 3, rotation: 2); XCTAssertNil(gate.movedAt)
+        for at in stride(from: 1010.0, through: 1040.0, by: 10) { gate.sample(at: at, acceleration: 3, rotation: 2) }
+        XCTAssertEqual(gate.movedAt, 1010)
+        gate.arm(at: 2000); XCTAssertNil(gate.movedAt)
+    }
     func testMotionRequiresStableBaselineAndSustainedMovement() {
         var gate = MotionGate()
         gate.sample(at: 0, acceleration: 2, rotation: 1)

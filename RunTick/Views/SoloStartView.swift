@@ -11,20 +11,25 @@ import SwiftUI
     private var generation = UUID()
     init(api: APIClient, user: User) {
         self.api = api; self.user = user
-        if let bytes = UserDefaults.standard.data(forKey: "starter"), let saved = try? JSONDecoder().decode([StageDelay].self, from: bytes), saved.count == 3 { stages = saved.map(\.normalized) }
+
+    }
+    var settingsLoaded = false
+    func loadSettings() async {
+        settingsLoaded = false
+        do { let value: StarterSettingsResponse = try await api.request("/api/auth/starter-settings"); stages = value.starterSettings; settingsLoaded = true }
+        catch { self.error = error.localizedDescription }
     }
     func start(allowReducedVolume: Bool = false) {
-        guard !running, stages.count == 3, stages.allSatisfy(\.valid) else { return }
+        guard settingsLoaded, !running, stages.count == 3, stages.allSatisfy(\.valid) else { return }
         do { if !allowReducedVolume, try audio.needsVolumeConfirmation() { volumeWarning = true; return } }
         catch { self.error = error.localizedDescription; return }
         previousIdleTimer = UIApplication.shared.isIdleTimerDisabled; UIApplication.shared.isIdleTimerDisabled = true
         running = true; result = nil; error = ""; cue = "请保持手机与起跑器稳定…"
-        UserDefaults.standard.set(try? JSONEncoder().encode(stages), forKey: "starter")
         generation = UUID(); let token = generation
         let id = UUID().uuidString, saved = stages
         task = Task {
             do {
-                try await motion.prepare(enabled: saved[0].reactionEnabled == true); try Task.checkCancellation()
+                try? await motion.prepare(enabled: saved[0].reactionEnabled == true); try Task.checkCancellation()
                 try await audio.play(settings: saved, cue: { self.cue = $0; self.deadline = $1 }, gun: { at, _ in
                     let firedAt = at
                     self.motion.gun(at: at) { value in
@@ -45,6 +50,7 @@ import SwiftUI
 }
 struct SoloStartView: View {
     @State private var model: SoloStartModel
+    @State private var confirmCue = false
     @Environment(\.scenePhase) private var phase
     init(api: APIClient, user: User) { _model = State(initialValue: SoloStartModel(api: api, user: user)) }
     var body: some View {
@@ -61,22 +67,18 @@ struct SoloStartView: View {
                     Button("结束本轮") { model.stop() }
                 }
             } else {
-                RTCard("发令设置") {
-                    Toggle("检测起跑反应时", isOn: Binding(get: { model.stages[0].reactionEnabled == true }, set: { model.stages[0].reactionEnabled = $0 }))
-                        Text("有起跑器并固定手机后开启；三点式起跑可关闭，不影响发令或跑步成绩。").font(.footnote).foregroundStyle(RT.muted)
-                        Toggle("播放各就位口令", isOn: Binding(get: { model.stages[0].enabled != false }, set: { model.stages[0].enabled = $0 }))
-                    ForEach(0..<3, id: \.self) { i in
-                        if i != 0 || model.stages[0].enabled != false {
-                            StageDelayControl(title: ["开始 → 各就位", model.stages[0].enabled == false ? "开始 → 预备" : "各就位结束 → 预备", "预备结束 → 枪声"][i], stage: $model.stages[i])
-                        }
-                    }
-                }
+                RTNotice(text: "发令时间使用“我的—起跑设置”。仅在枪声后检测移动，检测失败不影响计时。")
                 AudioPreparationCard()
-                Text("将手机贴靠或固定在起跑器上，保持稳定。反应时为手机运动检测估算，非专业起跑器计时。保持 App 在前台；后台切换会中断检测。").font(.footnote).foregroundStyle(RT.muted)
-                Button("确认设置，开始发令") { model.start() }.buttonStyle(RTButtonStyle())
+                Text("枪声前可调整手机，枪声后检测到移动即记录反应时。反应时为手机运动检测估算，非专业起跑器计时。保持 App 在前台；后台切换会中断检测。").font(.footnote).foregroundStyle(RT.muted)
+                Button("开始发令") { Task { await model.loadSettings(); if model.settingsLoaded { confirmCue = true } } }.buttonStyle(RTButtonStyle())
             }
             NavigationLink("单人起跑记录") { SoloHistoryView(api: model.api) }
             Button("重试同步本机记录") { Task { await TrainingSync.retry(api: model.api, userId: model.user.id) } }
+        }
+        .confirmationDialog("本轮播放“各就各位”？", isPresented: $confirmCue, titleVisibility: .visible) {
+            Button("播放并开始") { model.stages[0].enabled = true; model.start() }
+            Button("跳过并开始") { model.stages[0].enabled = false; model.start() }
+            Button("取消", role: .cancel) {}
         }
         .alert("媒体音量未调至最大", isPresented: $model.volumeWarning) {
             Button("先调整音量", role: .cancel) {}

@@ -72,3 +72,45 @@ private struct DelayRangeSlider: View {
             }
     }
 }
+
+
+struct UserStarterSettingsView: View {
+    let api: APIClient
+    @State private var stages = StageDelay.defaults
+    @State private var loading = true
+    @State private var saving = false
+    @State private var error = ""
+    @State private var saved = false
+    var body: some View {
+        RTPage {
+            RTHero(badge: "个人偏好", title: "起跑设置", subtitle: "保存到当前账号；担任起点时用于新一轮发令。")
+            RTCard("发令时间") {
+                Toggle("检测起跑反应时", isOn: Binding(get: { stages[0].reactionEnabled == true }, set: { stages[0].reactionEnabled = $0 }))
+                Text("仅检测枪声后手机的移动；各就各位和预备期间可以移动。检测失败不影响正式计时。").font(.footnote).foregroundStyle(RT.muted)
+                Toggle("播放预备口令", isOn: Binding(get: { stages[1].enabled != false }, set: { stages[1].enabled = $0 }))
+                ForEach(0..<3, id: \.self) { i in
+                    if i != 1 || stages[1].enabled != false {
+                        StageDelayControl(title: ["开始 → 各就各位", "各就各位结束 → 预备", stages[1].enabled != false ? "预备结束 → 枪声" : "各就各位结束 → 枪声"][i], stage: $stages[i])
+                    }
+                }
+                Text("是否播放各就各位在每次开始时选择；跳过时也跳过该段等待。修改仅对新一轮生效。").font(.footnote).foregroundStyle(RT.muted)
+            }.disabled(loading || saving)
+            if loading { ProgressView(); if !error.isEmpty { Button("重新加载") { Task { await load() } } } }
+            Button(saving ? "正在保存…" : "保存设置") { Task { await save() } }.buttonStyle(RTButtonStyle()).disabled(loading || saving)
+            if saved { RTNotice(text: "起跑设置已保存到账号") }
+        }.navigationTitle("起跑设置").navigationBarTitleDisplayMode(.inline).rtErrorAlert($error).task { await load() }
+    }
+    private func load() async {
+        loading = true
+        do { let value: StarterSettingsResponse = try await api.request("/api/auth/starter-settings"); stages = value.starterSettings; loading = false }
+        catch { self.error = error.localizedDescription }
+    }
+    private func save() async {
+        saving = true; saved = false; defer { saving = false }
+        do {
+            let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(stages))
+            let value: StarterSettingsResponse = try await api.request("/api/auth/starter-settings", method: "PUT", body: ["starterSettings": body])
+            stages = value.starterSettings; saved = true
+        } catch { self.error = error.localizedDescription }
+    }
+}

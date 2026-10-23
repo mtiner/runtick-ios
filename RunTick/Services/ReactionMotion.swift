@@ -19,17 +19,17 @@ import Foundation
             self.received = true
             let a = motion.userAcceleration, r = motion.rotationRate
             let at = MonotonicClock.fromUptime(motion.timestamp)
+            guard self.gunAt != nil else { return }
             self.gate.sample(at: at, acceleration: sqrt(a.x*a.x+a.y*a.y+a.z*a.z)*9.80665, rotation: sqrt(r.x*r.x+r.y*r.y+r.z*r.z))
             self.report()
         }
-        try await Task.sleep(for: .milliseconds(2200))
-        preflight = !received ? "unavailable" : (gate.ready && gate.movedAt == nil) ? "ready" : "unstable"
+        preflight = "ready"
     }
     func gun(at: Double, result: @escaping (ReactionResult) -> Void) {
-        gunAt = at; callback = result
+        gate.arm(at: at); gunAt = at; callback = result
         guard preflight == "ready" else { complete(ReactionResult(reactionMs: nil, reactionStatus: preflight)); return }
         report()
-        if callback != nil { timeout = Task { do { try await Task.sleep(for: .seconds(30)); complete(ReactionResult(reactionMs: nil, reactionStatus: "timeout")) } catch {} } }
+        if callback != nil { timeout = Task { do { try await Task.sleep(for: .seconds(30)); complete(ReactionResult(reactionMs: nil, reactionStatus: received ? "timeout" : "unavailable")) } catch {} } }
     }
     private func report() {
         guard let gunAt, let movement = gate.movedAt, callback != nil else { return }

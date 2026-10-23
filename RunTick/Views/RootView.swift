@@ -86,6 +86,7 @@ struct RootView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 8)
             }.rtEntrance(0.08)
             if let api = model.api {
+                NavigationLink("起跑设置") { UserStarterSettingsView(api: api) }
                 NavigationLink { HistoryView(api: api, user: user, room: nil) } label: {
                     HStack { Image(systemName: "chart.xyaxis.line"); Text("历史成绩"); Spacer(); Image(systemName: "arrow.right") }
                 }.rtEntrance(0.12)
