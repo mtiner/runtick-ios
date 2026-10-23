@@ -24,7 +24,7 @@ import SwiftUI
         do { if !allowReducedVolume, try audio.needsVolumeConfirmation() { volumeWarning = true; return } }
         catch { self.error = error.localizedDescription; return }
         previousIdleTimer = UIApplication.shared.isIdleTimerDisabled; UIApplication.shared.isIdleTimerDisabled = true
-        running = true; result = nil; error = ""; cue = "请保持手机与起跑器稳定…"
+        running = true; result = nil; error = ""; cue = "等待发令…"
         generation = UUID(); let token = generation
         let id = UUID().uuidString, saved = stages
         task = Task {

@@ -13,19 +13,13 @@ struct ReactionResult: Codable {
 struct MotionGate {
     private(set) var ready = false
     private(set) var movedAt: Double?
-    private var quiet: Double?
     private var armedAt: Double?
-    mutating func arm(at: Double) { ready = true; movedAt = nil; quiet = nil; candidate = nil; armedAt = at }
+    mutating func arm(at: Double) { ready = true; movedAt = nil; candidate = nil; armedAt = at }
     private var candidate: Double?
     mutating func sample(at: Double, acceleration: Double, rotation: Double) {
         guard at.isFinite, acceleration.isFinite, rotation.isFinite else { return }
         if let armedAt, at < armedAt { return }
-        if !ready {
-            if acceleration < 0.18 && rotation < 0.12 {
-                if quiet == nil { quiet = at }; ready = at - quiet! >= 500
-            } else { quiet = nil }
-            return
-        }
+        guard ready else { return }
         guard movedAt == nil else { return }
         if (acceleration > 0.45 && rotation > 0.2) || acceleration > 1.5 {
             if candidate == nil { candidate = at }

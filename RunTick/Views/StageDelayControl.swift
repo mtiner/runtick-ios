@@ -81,6 +81,7 @@ struct UserStarterSettingsView: View {
     @State private var saving = false
     @State private var error = ""
     @State private var saved = false
+    @State private var loadFailed = false
     var body: some View {
         RTPage {
             RTHero(badge: "个人偏好", title: "起跑设置", subtitle: "保存到当前账号；担任起点时用于新一轮发令。")
@@ -95,15 +96,15 @@ struct UserStarterSettingsView: View {
                 }
                 Text("是否播放各就各位在每次开始时选择；跳过时也跳过该段等待。修改仅对新一轮生效。").font(.footnote).foregroundStyle(RT.muted)
             }.disabled(loading || saving)
-            if loading { ProgressView(); if !error.isEmpty { Button("重新加载") { Task { await load() } } } }
+            if loading { ProgressView(); if loadFailed { Button("重新加载") { Task { await load() } } } }
             Button(saving ? "正在保存…" : "保存设置") { Task { await save() } }.buttonStyle(RTButtonStyle()).disabled(loading || saving)
             if saved { RTNotice(text: "起跑设置已保存到账号") }
         }.navigationTitle("起跑设置").navigationBarTitleDisplayMode(.inline).rtErrorAlert($error).task { await load() }
     }
     private func load() async {
-        loading = true
+        loading = true; loadFailed = false
         do { let value: StarterSettingsResponse = try await api.request("/api/auth/starter-settings"); stages = value.starterSettings; loading = false }
-        catch { self.error = error.localizedDescription }
+        catch { loadFailed = true; self.error = error.localizedDescription }
     }
     private func save() async {
         saving = true; saved = false; defer { saving = false }

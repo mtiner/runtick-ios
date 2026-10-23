@@ -346,7 +346,7 @@ import Network
         do {
             // Both local and remote starts ask on the phone that actually plays the cues.
 
-            cue = "请保持手机与起跑器稳定…"
+            cue = "等待发令…"
             try? await reactionMotion.prepare(enabled: stages[0].reactionEnabled == true)
             try Task.checkCancellation()
             guard fireGeneration == token, !stopped, race?.id == raceId, race?.active == true else { return }

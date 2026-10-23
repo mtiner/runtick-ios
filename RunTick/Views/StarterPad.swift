@@ -28,6 +28,7 @@ struct StarterPad: View {
                 }
                 Text(model.race?.startAt == nil ? "跟随口令，准备出发" : "枪声已发出 · 等待冲线")
                     .foregroundStyle(RT.muted)
+                if let status = model.race?.reactionStatus { Text(ReactionResult.text(model.race?.reactionMs, status) + " · 正式计时独立进行").font(.footnote).foregroundStyle(RT.muted) }
                 if !model.reactionNotice.isEmpty { RTNotice(text: model.reactionNotice) }
                 if !model.firing && model.race?.startAt == nil && model.pending == nil {
                     Button("重新发令") { Task { await model.fire() } }

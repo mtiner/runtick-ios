@@ -18,6 +18,7 @@ final class TimingTests: XCTestCase {
         gate.sample(at: 0, acceleration: 2, rotation: 1)
         XCTAssertNil(gate.movedAt)
         for at in stride(from: 100.0, through: 700.0, by: 10) { gate.sample(at: at, acceleration: 0.01, rotation: 0.01) }
+        gate.arm(at: 700)
         XCTAssertTrue(gate.ready)
         gate.sample(at: 710, acceleration: 2, rotation: 1)
         gate.sample(at: 720, acceleration: 0, rotation: 0)
